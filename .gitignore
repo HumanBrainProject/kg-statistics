@@ -1,0 +1,12 @@
+kg_statistics/kg_statistics/*.pyc
+ui_src/node_modules
+/.env
+/.env-*
+*.egg-info
+.cache/
+.pytest_cache/
+kg_statistics/pip-selfcheck.json
+kg_statistics/dist/
+kg_statistics/kg_statistics/ui/
+kg_statistics/kg_statistics/*.log
+
