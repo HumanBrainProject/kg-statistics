@@ -36,7 +36,8 @@ class StatisticsFetcher(object):
 
     current_milli_time = lambda self: int(round(time.time() * 1000))
 
-    logger = logging.getLogger("statistics")
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
 
     def _fetch_typestatistics(self):
         """
@@ -225,9 +226,10 @@ class StatisticsFetcher(object):
         type_results = self._fetch_typestatistics()
         nodes = self._format_typestatistics(type_results)
         if nodes is not None:
-            print("Start fetch relations")
-            nodes["links"] = self._fetch_typerelationstatistics()
-            print("Start fetch properties")
+            self.logger.debug("output path: {}".format(Config.get_deploy_path()))
+ 	    self.logger.debug("Start fetch relations")        
+	    nodes["links"] = self._fetch_typerelationstatistics()
+            self.logger.debug("Start fetch properties")     
             nodes["schemas"] = self._fetch_typeproperties(type_results)
             nodes["lastUpdate"] = self.current_milli_time()
 
@@ -240,7 +242,7 @@ class StatisticsFetcher(object):
                 os.path.join(Config.get_deploy_path(), "structure.json"), "w"
             ) as json_file:
                 json_file.write(json.dumps(nodes, indent=4))
-                self.logger.info("Statistics updated")
+                self.logger.debug("Statistics updated")
         else:
             self.logger.error("Statistics could not be updated")
             status = 2

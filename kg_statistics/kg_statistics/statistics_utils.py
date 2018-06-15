@@ -29,7 +29,7 @@ class StatisticsUtils(object):
             Sets variable from env
 
         """
-        self.logger = logging.getLogger("statistics")
+        self.logger = logging.getLogger(__name__)
         self.nexus = NexusClient(auth_client=auth_client)
 
     def enhance_statistics_with_nexus_elastic_counts(self, stats_elements):
@@ -39,7 +39,7 @@ class StatisticsUtils(object):
 
             :return: 0 if counts from ES match input counts, 1 otherwise
         """
-        self.logger.info("Started enhancing statistics with counts from nexus elastic")
+        self.logger.debug("Started enhancing statistics with counts from nexus elastic")
         matched_number = 0
         mismatched_number = 0
 
@@ -51,7 +51,7 @@ class StatisticsUtils(object):
                 mismatched_number += 1
             else:
                 matched_number += 1
-        enhance_report = "Comparison results:\n  total: {}\n  matched: {}\n  mismatched: {}".format(
+        enhance_report = "Comparison results:  total: {}  matched: {}  mismatched: {}".format(
             str(matched_number + mismatched_number),
             str(matched_number),
             str(mismatched_number))
