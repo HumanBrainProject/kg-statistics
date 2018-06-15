@@ -15,9 +15,9 @@
 #
 prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-SELECT ?schema ?property (count(?instance) as ?count)  (group_concat(distinct ?examples;separator="; ") as ?example) WHERE {
+SELECT ?property (count(?instance) as ?count)  (group_concat(distinct ?examples;separator="; ") as ?example) WHERE {
   ?instance a <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/Instance> .
   ?instance <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/deprecated> false .
-  ?instance <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/schema> ?schema .
+  ?instance <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/schema> $SCHEMA .
   ?instance ?property ?examples .
-}GROUP BY ?schema ?property
+}GROUP BY ?property
