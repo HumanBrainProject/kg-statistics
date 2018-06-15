@@ -110,7 +110,7 @@ class StatisticsFetcher(object):
             target_objects.append(result)
         return target_objects
 
-    def _fetch_typeproperties(self):
+    def _fetch_typeproperties(self, schemas):
         """
         Fetch properties of all entities
 
@@ -138,30 +138,35 @@ class StatisticsFetcher(object):
                     }
                 }
         """
+
         with open(os.path.join(os.path.dirname(__file__), "fetch_properties.sparql"), "r") as query_file:
-            type_query = query_file.read()
-            type_query = re.sub(r'^(?=#).+\n', "", type_query, flags=re.MULTILINE)
-            type_query = type_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
-        type_result = self.blazegraph.query(type_query)
+            main_query = query_file.read()
+            main_query = re.sub(r'^(?=#).+\n', "", main_query, flags=re.MULTILINE)
+            main_query = main_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
+
         target_objects = dict()
-        for schema in type_result:
-            prop = dict()
-            prop["fullname"] = schema["property"]["value"]
-            name = schema["property"]["value"].replace(
-                self.blazegraph.NEXUS_NAMESPACE+"/vocabs/nexus/core/terms/v0.1.0/", "")
-            prop["name"] = name
-            prop["numberOfInstances"] = int(schema["count"]["value"])
-            prop["isInSchema"] = False
-            examples = schema["example"]["value"].split(";")[:3]
-            prop["examples"] = [x.strip() for x in examples]
+        for schema in schemas:
             schema_name = self._remove_prefix(schema["schema"]["value"])
             schema_name, version = extract_version(schema_name)
-            if schema_name not in target_objects:
-                target_objects[schema_name] = dict()
-            if version not in target_objects[schema_name]:
-                target_objects[schema_name][version] = dict({"properties_dict": dict(),
-                                                             "properties": list()})
-            target_objects[schema_name][version]["properties_dict"][name] = prop
+            formatted_schema = "<{}>".format(schema["schema"]["value"])
+            type_result = self.blazegraph.query(main_query.replace("$SCHEMA", formatted_schema))
+            for property in type_result:
+                prop = dict()
+                prop["fullname"] = property["property"]["value"]
+                name = property["property"]["value"].replace(
+                    self.blazegraph.NEXUS_NAMESPACE+"/vocabs/nexus/core/terms/v0.1.0/", "")
+                prop["name"] = name
+                prop["numberOfInstances"] = int(property["count"]["value"])
+                prop["isInSchema"] = False
+                examples = property["example"]["value"].split(";")[:3]
+                prop["examples"] = [x.strip() for x in examples]
+
+                if schema_name not in target_objects:
+                    target_objects[schema_name] = dict()
+                if version not in target_objects[schema_name]:
+                    target_objects[schema_name][version] = dict({"properties_dict": dict(),
+                                                                 "properties": list()})
+                target_objects[schema_name][version]["properties_dict"][name] = prop
 
         # Fetching properties that are not in instances
 
@@ -183,7 +188,7 @@ class StatisticsFetcher(object):
         for schema_name in target_objects:
             for version in target_objects[schema_name]:
                 for propkey in target_objects[schema_name][version]["properties_dict"]:
-                    target_objects[schema_name][version]["properties"]\
+                    target_objects[schema_name][version]["properties"] \
                         .append(target_objects[schema_name][version]["properties_dict"][propkey])
 
         return target_objects
@@ -217,7 +222,7 @@ class StatisticsFetcher(object):
         nodes = self._format_typestatistics(type_results)
         if nodes is not None:
             nodes["links"] = self._fetch_typerelationstatistics()
-            nodes["schemas"] = self._fetch_typeproperties()
+            nodes["schemas"] = self._fetch_typeproperties(type_results)
             nodes["lastUpdate"] = self.current_milli_time()
 
             # enhance statistics in place
