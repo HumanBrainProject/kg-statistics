@@ -177,8 +177,10 @@
             <ul>
                 <li each={property in sortedProperties} title={property.name}>
                     {property.shortName} <span class="numberOfInstances">{property.numberOfInstances}</span>
-                    <div class="bar-instances-wo-prop" style="width:{100-property.instancesWithoutProp/selectedSchema.numberOfInstances*100}%"></div>
-                    <div class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedSchema.numberOfInstances*100)}% ({selectedSchema.numberOfInstances-property.instancesWithoutProp})</div>
+                    <div if={property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:{100-property.instancesWithoutProp/selectedSchema.numberOfInstances*100}%"></div>
+                    <div if={property.instancesWithoutProp} class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedSchema.numberOfInstances*100)}% ({selectedSchema.numberOfInstances-property.instancesWithoutProp})</div>
+                    <div if={!property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:100%"></div>
+                    <div if={!property.instancesWithoutProp} class="number-instances-wo-prop">100%</div>
                 </li>
             </ul>
         </div>
