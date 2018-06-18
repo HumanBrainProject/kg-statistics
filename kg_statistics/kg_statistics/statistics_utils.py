@@ -49,13 +49,11 @@ class StatisticsUtils(object):
             # count matched / mismatched for report
             if stats_element['numberOfInstances'] != nexus_element.total:
                 mismatched_number += 1
+                self.logger.warning("Mismatch of number of instances for schema {}: {} in blazegraph, {} in elasticsearch".format(stats_element['schema'], stats_element['numberOfInstances'], nexus_element.total))
             else:
                 matched_number += 1
         enhance_report = "Comparison results:  total: {}  matched: {}  mismatched: {}".format(
             str(matched_number + mismatched_number),
             str(matched_number),
             str(mismatched_number))
-        self.logger.info(enhance_report)
-        if stats_elements and mismatched_number > 0:
-            return 1
-        return 0
+        self.logger.debug(enhance_report)

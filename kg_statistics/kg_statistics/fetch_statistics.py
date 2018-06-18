@@ -234,7 +234,7 @@ class StatisticsFetcher(object):
             nodes["lastUpdate"] = self.current_milli_time()
 
             # enhance statistics in place
-            status = StatisticsUtils(auth_client).enhance_statistics_with_nexus_elastic_counts(nodes['nodes'])
+            StatisticsUtils(auth_client).enhance_statistics_with_nexus_elastic_counts(nodes['nodes'])
 
             if not os.path.exists(Config.get_deploy_path()):
                 os.makedirs(Config.get_deploy_path())
