@@ -17,7 +17,7 @@ from setuptools import setup
 
 setup(
     name='kg_statistics',
-    version='0.0.2',
+    version='0.0.1',
     packages=['kg_statistics'],
     install_requires=[
         'pyxus',
