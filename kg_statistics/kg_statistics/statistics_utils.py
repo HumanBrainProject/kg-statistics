@@ -39,7 +39,7 @@ class StatisticsUtils(object):
 
             :return: 0 if counts from ES match input counts, 1 otherwise
         """
-        self.logger.debug("Started enhancing statistics with counts from nexus elastic")
+        self.logger.info("Started enhancing statistics with counts from nexus elastic")
         matched_number = 0
         mismatched_number = 0
 
@@ -49,7 +49,7 @@ class StatisticsUtils(object):
             # count matched / mismatched for report
             if stats_element['numberOfInstances'] != nexus_element.total:
                 mismatched_number += 1
-                self.logger.warning("Mismatch of number of instances for schema {}: {} in blazegraph, {} in elasticsearch".format(stats_element['schema'], stats_element['numberOfInstances'], nexus_element.total))
+                self.logger.info("Mismatch of number of instances for schema {}: {} in blazegraph, {} in elasticsearch".format(stats_element['schema'], stats_element['numberOfInstances'], nexus_element.total))
             else:
                 matched_number += 1
         enhance_report = "Comparison results:  total: {}  matched: {}  mismatched: {}".format(

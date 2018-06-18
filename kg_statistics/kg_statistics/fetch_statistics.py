@@ -245,9 +245,8 @@ class StatisticsFetcher(object):
                 self.logger.debug("Statistics updated")
         else:
             self.logger.error("Statistics could not be updated")
-            status = 2
-        return status
-
+            return 2
+        return 0
 
 def extract_version(string):
     """
