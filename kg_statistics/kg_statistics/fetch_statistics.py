@@ -94,6 +94,7 @@ class StatisticsFetcher(object):
             type_query = query_file.read()
             type_query = re.sub(r'^(?=#).+\n', "", type_query, flags=re.MULTILINE)
             type_query = type_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
+
         type_result = self.blazegraph.query(type_query)
         target_objects = list()
         for schema in type_result:
@@ -144,6 +145,12 @@ class StatisticsFetcher(object):
             main_query = re.sub(r'^(?=#).+\n', "", main_query, flags=re.MULTILINE)
             main_query = main_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
 
+        with open(os.path.join(os.path.dirname(__file__), "fetch_propertyless.sparql"),
+                  "r") as query_file:
+            property_less_query = query_file.read()
+            property_less_query = re.sub(r'^(?=#).+\n', "", property_less_query, flags=re.MULTILINE)
+            property_less_query = property_less_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
+
         target_objects = dict()
         for schema in schemas:
             schema_name = self._remove_prefix(schema["schema"]["value"])
@@ -170,20 +177,16 @@ class StatisticsFetcher(object):
 
         # Fetching properties that are not in instances
 
-        with open(os.path.join(os.path.dirname(__file__), "fetch_propertyless.sparql"), "r") as query_file:
-            type_query = query_file.read()
-            type_query = re.sub(r'^(?=#).+\n', "", type_query, flags=re.MULTILINE)
-            type_query = type_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
-        type_result = self.blazegraph.query(type_query)
 
-        #Combining data
-        for schema in type_result:
-            schema_name = self._remove_prefix(schema["schema"]["value"])
-            name = schema["property"]["value"].replace(
-                self.blazegraph.NEXUS_NAMESPACE+"/vocabs/nexus/core/terms/v0.1.0/", "")
-            schema_name, version = extract_version(schema_name)
-            target_objects[schema_name][version]["properties_dict"][name][
-                "instancesWithoutProp"] = int(schema["count"]["value"])
+            property_less_result = self.blazegraph.query(property_less_query.replace("$SCHEMA", formatted_schema))
+
+            #Combining data
+            for property_not_bound in property_less_result:
+                name = property_not_bound["property"]["value"].replace(
+                    self.blazegraph.NEXUS_NAMESPACE+"/vocabs/nexus/core/terms/v0.1.0/", "")
+                target_objects[schema_name][version]["properties_dict"][name][
+                    "instancesWithoutProp"] = int(property_not_bound["count"]["value"])
+
 
         for schema_name in target_objects:
             for version in target_objects[schema_name]:
@@ -218,10 +221,13 @@ class StatisticsFetcher(object):
                  1 -> stats enhancement counts discrepancy
                  2 -> stats cannot be updated
         """
+        print("Start fetch types")
         type_results = self._fetch_typestatistics()
         nodes = self._format_typestatistics(type_results)
         if nodes is not None:
+            print("Start fetch relations")
             nodes["links"] = self._fetch_typerelationstatistics()
+            print("Start fetch properties")
             nodes["schemas"] = self._fetch_typeproperties(type_results)
             nodes["lastUpdate"] = self.current_milli_time()
 
