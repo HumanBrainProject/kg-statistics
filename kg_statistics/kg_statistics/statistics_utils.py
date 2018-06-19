@@ -44,12 +44,12 @@ class StatisticsUtils(object):
         mismatched_number = 0
 
         for stats_element in stats_elements:
-            nexus_element = self.nexus.instances.list_by_full_subpath(stats_element['schema'])
+            nexus_element = self.nexus.instances.list_by_full_subpath(stats_element['id'])
             stats_element['numberOfInstancesFromNexusElastic'] = nexus_element.total
             # count matched / mismatched for report
             if stats_element['numberOfInstances'] != nexus_element.total:
                 mismatched_number += 1
-                self.logger.info("Mismatch of number of instances for schema {}: {} in blazegraph, {} in elasticsearch".format(stats_element['schema'], stats_element['numberOfInstances'], nexus_element.total))
+                self.logger.info("Mismatch of number of instances for schema {}: {} in blazegraph, {} in elasticsearch".format(stats_element['id'], stats_element['numberOfInstances'], nexus_element.total))
             else:
                 matched_number += 1
         enhance_report = "Comparison results:  total: {}  matched: {}  mismatched: {}".format(
