@@ -52,6 +52,8 @@ class StatisticsUtils(object):
                 self.logger.info("Mismatch of number of instances for schema {}: {} in blazegraph, {} in elasticsearch".format(stats_element['id'], stats_element['numberOfInstances'], nexus_element.total))
             else:
                 matched_number += 1
+        if mismatched_number==0:
+            self.logger.info("Elasticsearch and Blazegraph are consistent")
         enhance_report = "Comparison results:  total: {}  matched: {}  mismatched: {}".format(
             str(matched_number + mismatched_number),
             str(matched_number),
