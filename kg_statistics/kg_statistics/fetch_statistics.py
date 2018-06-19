@@ -188,7 +188,6 @@ class StatisticsFetcher(object):
                 target_objects[schema_name][version]["properties_dict"][name][
                     "instancesWithoutProp"] = int(property_not_bound["count"]["value"])
 
-
         for schema_name in target_objects:
             for version in target_objects[schema_name]:
                 for propkey in target_objects[schema_name][version]["properties_dict"]:
@@ -208,7 +207,6 @@ class StatisticsFetcher(object):
         # pylint: disable=no-self-use
         return string.replace(self.blazegraph.NEXUS_NAMESPACE+"/v0/schemas/", "")
 
-
     def get_statistics(self, auth_client):
         """
         This method is the entry point of fetch_statistics
@@ -227,8 +225,8 @@ class StatisticsFetcher(object):
         nodes = self._format_typestatistics(type_results)
         if nodes is not None:
             self.logger.debug("output path: {}".format(Config.get_deploy_path()))
- 	    self.logger.debug("Start fetch relations")        
-	    nodes["links"] = self._fetch_typerelationstatistics()
+            self.logger.debug("Start fetch relations")
+            nodes["links"] = self._fetch_typerelationstatistics()
             self.logger.debug("Start fetch properties")     
             nodes["schemas"] = self._fetch_typeproperties(type_results)
             nodes["lastUpdate"] = self.current_milli_time()

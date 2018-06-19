@@ -24,7 +24,4 @@ fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"))
 oidc_config = Config.get_oidc_configuration()
 refresh_token_client = SimpleRefreshTokenClient(oidc_config["openid_host"], oidc_config["client_secret"],
                                                 oidc_config["client_id"], oidc_config["refresh_token"])
-start_time = time.time()
-print("Start {}".format(start_time))
 StatisticsFetcher().get_statistics(refresh_token_client)
-print("Duration {}".format(time.time() - start_time))
