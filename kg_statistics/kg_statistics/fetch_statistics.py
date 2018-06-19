@@ -220,11 +220,11 @@ class StatisticsFetcher(object):
                  1 -> stats enhancement counts discrepancy
                  2 -> stats cannot be updated
         """
-        print("Start fetch types")
+        self.logger.debug("output path: {}".format(Config.get_deploy_path()))
+        self.logger.debug("Start fetch types")
         type_results = self._fetch_typestatistics()
         nodes = self._format_typestatistics(type_results)
         if nodes is not None:
-            self.logger.debug("output path: {}".format(Config.get_deploy_path()))
             self.logger.debug("Start fetch relations")
             nodes["links"] = self._fetch_typerelationstatistics()
             self.logger.debug("Start fetch properties")     
@@ -242,9 +242,7 @@ class StatisticsFetcher(object):
                 json_file.write(json.dumps(nodes, indent=4))
                 self.logger.debug("Statistics updated")
         else:
-            self.logger.error("Statistics could not be updated")
-            return 2
-        return 0
+            raise RuntimeError("Statistics could not be updated")
 
 def extract_version(string):
     """
