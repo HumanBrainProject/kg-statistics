@@ -10,4 +10,5 @@ kg_statistics/pip-selfcheck.json
 kg_statistics/dist/
 kg_statistics/kg_statistics/ui/
 kg_statistics/kg_statistics/*.log
-
+**/.idea
+**/*.iml

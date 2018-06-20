@@ -13,20 +13,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import sys
-import time
-
+import os
 from openid_http_client.auth_client.simple_refresh_token_client import SimpleRefreshTokenClient
 from kg_statistics.fetch_statistics import StatisticsFetcher
 from kg_statistics.config import Config
+from logging.config import fileConfig
+fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"))
 
-print "Launching statistics fetcher .... \n  output path: {}".format(Config.get_deploy_path())
 # create auth_client
 oidc_config = Config.get_oidc_configuration()
 refresh_token_client = SimpleRefreshTokenClient(oidc_config["openid_host"], oidc_config["client_secret"],
                                                 oidc_config["client_id"], oidc_config["refresh_token"])
-start_time = time.time()
-print("Start {}".format(start_time))
-status = StatisticsFetcher().get_statistics(refresh_token_client)
-print("Duration {}".format(time.time() - start_time))
-sys.exit(status)
+StatisticsFetcher().get_statistics(refresh_token_client)
