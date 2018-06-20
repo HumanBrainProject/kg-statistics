@@ -76,7 +76,7 @@ class StatisticsFetcher(object):
             return target_object
         return None
 
-    def _fetch_typerelationstatistics(self):
+    def _fetch_typerelationstatistics(self, type_result):
         """
         Fetch statistics about the relations between entities
 
@@ -91,25 +91,29 @@ class StatisticsFetcher(object):
                     to entities with the schema target
                 }
         """
-        with open(os.path.join(os.path.dirname(__file__), "fetch_relations.sparql"), "r") as query_file:
-            type_query = query_file.read()
-            type_query = re.sub(r'^(?=#).+\n', "", type_query, flags=re.MULTILINE)
-            type_query = type_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
-
-        type_result = self.blazegraph.query(type_query)
         target_objects = list()
-        for schema in type_result:
-            result = dict()
-            result["source"] = self._remove_prefix(schema["originSchema"]["value"])
-            result["target"] = self._remove_prefix(schema["targetSchema"]["value"])
-            structure_source = re.match(r"(?P<org>.*?)/.*?/(?P<schema>.*?)/(?P<version>.*?)(/.*)?$", result["source"])
-            structure_target = re.match(r"(?P<org>.*?)/.*?/(?P<schema>.*?)/(?P<version>.*?)(/.*)?$", result["target"])
-            result["source_group"] = structure_source.group("org").lower()
-            result["target_group"] = structure_target.group("org").lower()
-            result["name"] = schema["rel"]["value"]
-            result["value"] = int(schema["numberOfRelations"]["value"])
-            result["id"] = result["source"]+"_"+result["target"]
-            target_objects.append(result)
+        if type_result is not None:
+            with open(os.path.join(os.path.dirname(__file__), "fetch_relation_for_schema.sparql"), "r") as query_file:
+                type_query = query_file.read()
+                type_query = re.sub(r'^(?=#).+\n', "", type_query, flags=re.MULTILINE)
+                type_query = type_query.replace("$NEXUS_BASE", self.blazegraph.NEXUS_NAMESPACE)
+            for element in type_result:
+                origin_schema=element['schema']['value']
+                self.logger.debug("Looking for relations from {} to any other instance".format(origin_schema))
+                query_results = self.blazegraph.query(type_query.replace("$SCHEMA", origin_schema))
+                if query_results:
+                    for query_result in query_results:
+                        result = dict()
+                        result["source"] = self._remove_prefix(origin_schema)
+                        result["target"] = self._remove_prefix(query_result["targetSchema"]["value"])
+                        structure_source = re.match(r"(?P<org>.*?)/.*?/(?P<schema>.*?)/(?P<version>.*?)(/.*)?$", result["source"])
+                        structure_target = re.match(r"(?P<org>.*?)/.*?/(?P<schema>.*?)/(?P<version>.*?)(/.*)?$", result["target"])
+                        result["source_group"] = structure_source.group("org").lower()
+                        result["target_group"] = structure_target.group("org").lower()
+                        result["name"] = query_result["rel"]["value"]
+                        result["value"] = int(query_result["numberOfRelations"]["value"])
+                        result["id"] = result["source"]+"_"+result["target"]+"_"+query_result["rel"]["value"]
+                        target_objects.append(result)
         return target_objects
 
     def _fetch_typeproperties(self, schemas):
@@ -155,6 +159,7 @@ class StatisticsFetcher(object):
         target_objects = dict()
         for schema in schemas:
             schema_name = self._remove_prefix(schema["schema"]["value"])
+            self.logger.debug("Fetch properties for {}".format(schema_name))
             schema_name, version = extract_version(schema_name)
             formatted_schema = "<{}>".format(schema["schema"]["value"])
             type_result = self.blazegraph.query(main_query.replace("$SCHEMA", formatted_schema))
@@ -166,8 +171,8 @@ class StatisticsFetcher(object):
                 prop["name"] = name
                 prop["numberOfInstances"] = int(property["count"]["value"])
                 prop["isInSchema"] = False
-                examples = property["example"]["value"].split(";")[:3]
-                prop["examples"] = [x.strip() for x in examples]
+                #examples = property["example"]["value"].split(";")[:3]
+                #prop["examples"] = [x.strip() for x in examples]
 
                 if schema_name not in target_objects:
                     target_objects[schema_name] = dict()
@@ -226,8 +231,8 @@ class StatisticsFetcher(object):
         nodes = self._format_typestatistics(type_results)
         if nodes is not None:
             self.logger.debug("Start fetch relations")
-            nodes["links"] = self._fetch_typerelationstatistics()
-            self.logger.debug("Start fetch properties")     
+            nodes["links"] = self._fetch_typerelationstatistics(type_results)
+            self.logger.debug("Fetch properties")
             nodes["schemas"] = self._fetch_typeproperties(type_results)
             nodes["lastUpdate"] = self.current_milli_time()
 
