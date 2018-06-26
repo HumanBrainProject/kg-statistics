@@ -24,7 +24,10 @@
     let searchQuery = "";
     let searchResults = [];
     let blazegraph_status = {};
-    let minNodeCounts = 6
+    let minNodeCounts = 6;
+    let whitelist = [
+        "minds/core/dataset/v0.0.4"
+    ];
 
     window.testdatas = function () {
         return datas;
@@ -67,10 +70,14 @@
                     map[node.group] = i
                     return map
                 }, {})
+                //Hidding nodes with too many connection
                 datas.nodes.forEach(node => {
                     node.hash = md5(node.id);
                     node.hidden = false;
-                    if (relations[node.id] !== undefined && group[node.group].length > minNodeCounts && relations[node.id].length / group[node.group].length > AppConfig.structure.autoHideThreshold) {
+                    if (relations[node.id] !== undefined && 
+                        whitelist.indexOf(node.id) < 0 &&
+                        group[node.group].length > minNodeCounts &&
+                        relations[node.id].length / group[node.group].length > AppConfig.structure.autoHideThreshold) {
                         node.hidden = true;
                     }
                 });
