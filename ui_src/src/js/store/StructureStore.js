@@ -70,7 +70,8 @@
                     map[node.group] = i
                     return map
                 }, {})
-                //Hidding nodes with too many connection
+                
+                //Hidding nodes with too many connections
                 datas.nodes.forEach(node => {
                     node.hash = md5(node.id);
                     node.hidden = false;
