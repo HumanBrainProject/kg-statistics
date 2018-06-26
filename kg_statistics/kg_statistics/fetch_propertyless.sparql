@@ -15,18 +15,18 @@
 #
 prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-SELECT ?schema ?property  (count(?i) as ?count) WHERE {
+SELECT ?property  (count(?i) as ?count) WHERE {
 
- { SELECT ?schema ?property WHERE {
+ { SELECT ?property WHERE {
     ?instance a <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/Instance> .
     ?instance <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/deprecated> false .
-    ?instance <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/schema> ?schema .
+    ?instance <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/schema> $SCHEMA .
     ?instance ?property ?examples .
-  }GROUP BY ?schema ?property
+  }GROUP BY  ?property
 
  } ?i a <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/Instance> .
     ?i <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/deprecated> false .
-    ?i <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/schema> ?schema .
+    ?i <$NEXUS_BASE/vocabs/nexus/core/terms/v0.1.0/schema> $SCHEMA .
     OPTIONAL {?i ?property ?o }
   	FILTER (!bound(?o))
-} GROUP BY ?schema ?property
+} GROUP BY ?property

@@ -15,11 +15,4 @@
 #
 
 '''kg_statistics module provides statistics on knowledge graph state'''
-import os
-from ConfigParser import NoSectionError
-from logging.config import fileConfig
 
-try:
-    fileConfig(os.path.join(os.path.dirname(__file__), 'logging.conf'))
-except NoSectionError as e:
-    print "Could not load the logging file properly: {}".format(e)

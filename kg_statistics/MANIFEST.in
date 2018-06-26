@@ -1,6 +1,6 @@
 include kg_statistics/logging.conf
 include kg_statistics/fetch_properties.sparql
 include kg_statistics/fetch_propertyless.sparql
-include kg_statistics/fetch_relations.sparql
+include kg_statistics/fetch_relation_for_schema.sparql
 include kg_statistics/fetch_types.sparql
 include kg_statistics/configuration.json
