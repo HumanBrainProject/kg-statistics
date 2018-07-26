@@ -406,13 +406,18 @@
                 .force('link', d3.forceLink()
                     .id(function(d) { return d.id; })
                     .distance( (d) => {
-                        return 400;
+                        return 100;
                     })
                 )
                 .force('charge', d3.forceManyBody()
                     .distanceMin(10)
                     .distanceMax(height)
-                    .strength(-300)
+                    .strength(-200)
+                )
+                .force('collide', d3.forceCollide()
+                    .radius((d) => {
+                        return 20;
+                    })
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
@@ -596,7 +601,7 @@
             }
 
             function ticked() {
-                var alpha = this.alpha();
+                
                 links
                     .attr("x1", d => d.source.x)
                     .attr("y1", d => d.source.y)
@@ -656,41 +661,16 @@
 
                     centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;  
                 }
-                // don't modify points close the the group centroid:
-                var minDistance = 10;
-
-                // modify the min distance as the force cools:
-                if (alpha < 0.1) {
-                    minDistance = 10 + (1000 * (0.1-alpha))
-                }
-
-                // adjust each point if needed towards group centroid:
-                nodes.each((d) => {
-                    var numberOfInstances = centroids[d.group].totalNumOfInstances;
-                    var cx = centroids[d.group].x;
-                    var cy = centroids[d.group].y;
-                    var x = d.x;
-                    var y = d.y;
-                    var dx = cx - x;
-                    var dy = cy - y;
-
-                    var r = Math.sqrt(dx*dx+dy*dy)
-
-                    if (r>minDistance ) {
-                        //d.x = x * 0.9 + cx * 0.1;
-                        //d.y = y * 0.9 + cy * 0.1;
-                    }
-                })
 
                 //Make the x-position equal to the x-position specified in the module positioning object or, if not in
                 //the hash, then set it to 250
-                var forceX = d3.forceX(function (d) {return centroids[d.group] ? centroids[d.group].x : 250})
-                    .strength(0.05)
+                var forceX = d3.forceX(function (d) {return centroids[d.group] ? centroids[d.group].x : width / 2})
+                    .strength(0.3)
 
                 //Same for forceY--these act as a gravity parameter so the different strength determines how closely
                 //the individual nodes are pulled to the center of their module position
-                var forceY = d3.forceY(function (d) {return centroids[d.group] ? centroids[d.group].y : 250})
-                    .strength(0.05)
+                var forceY = d3.forceY(function (d) {return centroids[d.group] ? centroids[d.group].y : height / 2})
+                    .strength(0.3)
 
                 self.simulation
                     .force("x", forceX)
