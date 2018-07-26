@@ -20,8 +20,7 @@ import json
 class Config(object):
     @staticmethod
     def get_deploy_path():
-        return "ui" if "ENV" in os.environ and os.environ.get("ENV").lower() == \
-                       "localdev" else "/var/www/html/admin"
+        return os.getenv("STATISTICS_DEPLOYPATH", "ui")
 
     @staticmethod
     def get_configuration():
