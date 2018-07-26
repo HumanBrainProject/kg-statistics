@@ -18,12 +18,10 @@
     let datas;
     let hiddenSchemas = [];
     let relations;
-    let hiddenLinks = []
     let selectedSchema;
     let highlightedSchema;
     let searchQuery = "";
     let searchResults = [];
-    let blazegraph_status = {};
     let minNodeCounts = 6;
     let whitelist = [
         "minds/core/dataset/v0.0.4"
@@ -33,71 +31,82 @@
         return datas;
     }
 
+    const loadData = function (datas) {
+        relations = {};
+        datas.links.forEach(link => {
+            link.provenance = link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance)
+            if (relations[link.source] === undefined) {
+                relations[link.source] = [];
+            }
+            relations[link.source].push({
+                relationId: link.id,
+                relatedSchema: link.target,
+                relationCount: link.value,
+                relationName: link.name
+            });
+            if (relations[link.target] === undefined) {
+                relations[link.target] = [];
+            }
+            if (link.source !== link.target) {
+                relations[link.target].push({
+                    relationId: link.id,
+                    relatedSchema: link.source,
+                    relationCount: link.value,
+                    relationName: link.name
+                });
+            }
+        });
+        let group = datas.nodes.reduce((map, node) => {
+            let i = map[node.group] || []
+            i.push(node)
+            map[node.group] = i
+            return map
+        }, {})
+        
+        //Hidding nodes with too many connections
+        datas.nodes.forEach(node => {
+            node.hash = md5(node.id);
+            node.hidden = false;
+            if (relations[node.id] !== undefined && 
+                whitelist.indexOf(node.id) < 0 &&
+                group[node.group].length > minNodeCounts &&
+                relations[node.id].length / group[node.group].length > AppConfig.structure.autoHideThreshold) {
+                node.hidden = true;
+            }
+        });
+
+        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+
+        Object.entries(datas.schemas).forEach(([name, schemas]) => {
+            Object.entries(schemas).forEach(([version, schema]) => {
+                schema.properties.forEach(p => {
+                    const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
+                    const m2 = p.name && p.name.length && p.name.match(/.+\/(.+)$/);
+                    const m3 = p.name && p.name.length && p.name.match(/.+:(.+)$/);
+                    p.shortName = (m1 && m1.length===2)?m1[1]:(m2 && m2.length===2)?m2[1]:(m3 && m3.length===2)?m3[1]:p.name;
+                });
+            });
+        });
+        structureStore.toggleState("DATAS_LOADED", true);
+        structureStore.toggleState("DATAS_LOADING", false);
+        structureStore.notifyChange();
+    }
+    var retrigger = true;
     const init = function () {
         if (!datas && !structureStore.is("DATAS_LOADING")) {
             structureStore.toggleState("DATAS_LOADING", true);
             $.get("structure.json", function (response) {
+                console.log(response);
                 datas = response;
-
-                relations = {};
-
-                datas.links.forEach(link => {
-                    link.provenance = link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance)
-                    if (relations[link.source] === undefined) {
-                        relations[link.source] = [];
+                if(datas){
+                    loadData(datas);
+                }else{
+                    structureStore.toggleState("DATAS_LOADING", false);
+                    if(retrigger){
+                        retrigger = false;
+                        init();
                     }
-                    relations[link.source].push({
-                        relationId: link.id,
-                        relatedSchema: link.target,
-                        relationCount: link.value,
-                        relationName: link.name
-                    });
-                    if (relations[link.target] === undefined) {
-                        relations[link.target] = [];
-                    }
-                    if (link.source !== link.target) {
-                        relations[link.target].push({
-                            relationId: link.id,
-                            relatedSchema: link.source,
-                            relationCount: link.value,
-                            relationName: link.name
-                        });
-                    }
-                });
-                let group = datas.nodes.reduce((map, node) => {
-                    let i = map[node.group] || []
-                    i.push(node)
-                    map[node.group] = i
-                    return map
-                }, {})
-                
-                //Hidding nodes with too many connections
-                datas.nodes.forEach(node => {
-                    node.hash = md5(node.id);
-                    node.hidden = false;
-                    if (relations[node.id] !== undefined && 
-                        whitelist.indexOf(node.id) < 0 &&
-                        group[node.group].length > minNodeCounts &&
-                        relations[node.id].length / group[node.group].length > AppConfig.structure.autoHideThreshold) {
-                        node.hidden = true;
-                    }
-                });
-
-                hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
-
-                Object.entries(datas.schemas).forEach(([name, schemas]) => {
-                    Object.entries(schemas).forEach(([version, schema]) => {
-                        schema.properties.forEach(p => {
-                            const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
-                            const m2 = p.name && p.name.length && p.name.match(/.+\/(.+)$/);
-                            const m3 = p.name && p.name.length && p.name.match(/.+:(.+)$/);
-                            p.shortName = (m1 && m1.length===2)?m1[1]:(m2 && m2.length===2)?m2[1]:(m3 && m3.length===2)?m3[1]:p.name;
-                        });
-                    });
-                });
-                structureStore.toggleState("DATAS_LOADED", true);
-                structureStore.toggleState("DATAS_LOADING", false);
-                structureStore.notifyChange();
+                }
             });
         }
     }
