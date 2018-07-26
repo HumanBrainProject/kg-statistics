@@ -231,7 +231,7 @@
             maxRadius: 50
         }
 
-        this.initialZoom = 0.5;
+        this.initialZoom = 0.3;
 
         this.on("mount", () =>  {
             RiotPolice.requestStore("structure", this);
@@ -384,31 +384,7 @@
             
             var width = this.svg.node().getBoundingClientRect().width;
             var height = this.svg.node().getBoundingClientRect().height;
-
-            self.simulation = d3.forceSimulation()
-                .force("link", d3.forceLink().id((d) => {
-                    return d.id;
-                }).distance((d) => {
-                    let distance = 1 / Math.sqrt(d.value) * 1000;
-                    //Putting more distance between nodes from different private spaces
-                    let modifier = d.target_group == d.source_group? 1 : 2.5
-                    distance = distance < 300 ? (distance > 120 ? distance : 120) : 300;
-                    return distance * modifier
-                }))
-                .force("charge", d3.forceManyBody().strength((d) => {
-                    if (d.id === undefined) {
-                        return 0;
-                    } else if (!self.stores.structure.hasRelations(d.id, true)) {
-                        return 0;
-                    }
-                    return -200;
-                }).distanceMax( height ))
-                .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("collide", d3.forceCollide((d) => {
-                    return d.numberOfInstances !== undefined ? Math.log(d.numberOfInstances) * 4 + 8 : 10;
-                }))
-                .force("groupOnXAxis", d3.forceX().strength(0.02))
-                .force("groupOnYAxis", d3.forceY().strength(0.02))
+            
 
             // Create a container for the hulls
             // in order to draw the hulls (SVG) before/under the nodes
@@ -423,15 +399,30 @@
                 .attr("class", "link-nodes")
             var nodesg = this.view.append("g")
                 .attr("class", "nodes")
-            // Grouping by organization
+            // Grouping nodes by organization
             var groupIds = d3.nest().key((n) => n.group ).entries(this.nodes)
 
+            self.simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink()
+                    .id(function(d) { return d.id; })
+                    .distance( (d) => {
+                        return 400;
+                    })
+                )
+                .force('charge', d3.forceManyBody()
+                    .distanceMin(10)
+                    .distanceMax(height)
+                    .strength(-300)
+                )
+                .force('center', d3.forceCenter(width / 2, height / 2));
+
+
             // SVG path for hulls
-            paths = hull.selectAll('.path_placeholder')
+            paths = hull.selectAll('.hull')
                 .data(groupIds, (d) => d )
                 .enter()
                 .append('g')
-                .attr('class', 'path_placeholder')
+                .attr('class', 'hull')
                 .append('path')
                 .style( 'fill-opacity', 0.3)
                 .style('stroke-width', 3)
@@ -445,7 +436,7 @@
                 .style('opacity', 1)
 
              // add interaction to the groups
-            hull.selectAll('.path_placeholder')
+            hull.selectAll('.hull')
                 .call(d3.drag()
                     .on('start', group_dragstarted)
                     .on('drag', group_dragged)
@@ -498,7 +489,7 @@
                     if(d.target_group == d.group){
                         self.hullName = d.source_group
                     }else{
-                        self.hullName = d.source_group + " <-> " + d.target_group
+                        self.hullName = "from " + d.source_group + " to " + d.target_group
                     }
                     self.update()
                 })
@@ -605,6 +596,7 @@
             }
 
             function ticked() {
+                var alpha = this.alpha();
                 links
                     .attr("x1", d => d.source.x)
                     .attr("y1", d => d.source.y)
@@ -633,6 +625,76 @@
                 nodes.select('.node__nb-instance')
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 4);
+                
+                //Regrouping nodes by private spaces
+                var coordMap = new Map();
+                nodes.each( (node) => {
+                    var coord = {x: node.x, y: node.y, numberOfInstances: node.numberOfInstances};
+                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
+                });
+
+                // get the centroid of each group:
+                var centroids = new Map();
+
+                for (var group in coordMap) {
+                    var groupNodes = coordMap[group];
+                    var n = groupNodes.length;
+                    var cx = 0;
+                    var tx = 0;
+                    var cy = 0;
+                    var ty = 0;
+                    var totalNumOfInstances = 0;
+
+                    groupNodes.forEach(function(d) {
+                        tx += d.x;
+                        ty += d.y;
+                        totalNumOfInstances += d.numberOfInstances;
+                    })
+
+                    cx = tx/n;
+                    cy = ty/n;
+
+                    centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;  
+                }
+                // don't modify points close the the group centroid:
+                var minDistance = 10;
+
+                // modify the min distance as the force cools:
+                if (alpha < 0.1) {
+                    minDistance = 10 + (1000 * (0.1-alpha))
+                }
+
+                // adjust each point if needed towards group centroid:
+                nodes.each((d) => {
+                    var numberOfInstances = centroids[d.group].totalNumOfInstances;
+                    var cx = centroids[d.group].x;
+                    var cy = centroids[d.group].y;
+                    var x = d.x;
+                    var y = d.y;
+                    var dx = cx - x;
+                    var dy = cy - y;
+
+                    var r = Math.sqrt(dx*dx+dy*dy)
+
+                    if (r>minDistance ) {
+                        //d.x = x * 0.9 + cx * 0.1;
+                        //d.y = y * 0.9 + cy * 0.1;
+                    }
+                })
+
+                //Make the x-position equal to the x-position specified in the module positioning object or, if not in
+                //the hash, then set it to 250
+                var forceX = d3.forceX(function (d) {return centroids[d.group] ? centroids[d.group].x : 250})
+                    .strength(0.05)
+
+                //Same for forceY--these act as a gravity parameter so the different strength determines how closely
+                //the individual nodes are pulled to the center of their module position
+                var forceY = d3.forceY(function (d) {return centroids[d.group] ? centroids[d.group].y : 250})
+                    .strength(0.05)
+
+                self.simulation
+                    .force("x", forceX)
+                    .force("y", forceY)
             
                 updateGroups();
             }
