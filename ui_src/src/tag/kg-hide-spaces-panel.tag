@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-hide-panel>
+<kg-hide-spaces-panel>
     <style scoped>
          :scope.open {
             right: var(--sidebar-width);
@@ -28,7 +28,7 @@
 
         button.open-panel {
             position: absolute;
-            top: 60px;
+            top: 110px;
             left: -40px;
             width: 40px;
             height: 40px;
@@ -62,7 +62,7 @@
 
         .schemas{
             margin-top: 15px;
-            max-height:calc(100% - 51px);
+            max-height:calc(100% - 45px);
             overflow-y:auto;
         }
 
@@ -90,9 +90,9 @@
             line-height:1.2;
         }
 
-        .nodelist{
+        .spacelist{
             margin-top: 0;
-            max-height:calc(100% - 45px);
+            max-height:calc(100% - 51px);
             overflow-y:auto;
         }
 
@@ -118,7 +118,7 @@
             background:#111;
             color:white;
             border:0;
-            border-radius: 5px 0 0 5px;
+            border-radius: 5px;
             transition:background-color 0.25s ease-out;
             cursor:pointer;
             outline:none;
@@ -126,32 +126,31 @@
         .actions button:hover{
             background:#333;
         }
-        .actions button:last-child{
-            border-radius: 0 5px 5px 0;
-            border-left:1px solid #222;
+
+        .reverse{
+            transform: rotate(180deg);
         }
     </style>
 
     <button class="open-panel" onclick={togglePanel}>
-        <i class="fa fa-eye-slash" aria-hidden="true"></i>
-        <span class="bubble">{hiddenSchemas.length}</span>
+        <i class="fa fa-share-alt reverse" aria-hidden="true"></i>
+        <span class="bubble">{hiddenSpaces.length}</span>
     </button>
     
     <div class="title">
-        Nodes visibility
+        Spaces visibility
         <div class="actions">
-            <button class="hide-all" onclick={hideAll}>Hide all</button>
             <button class="show-all" onclick={showAll}>Show all</button>
         </div>
     </div>
 
-    <div class="nodelist">
+    <div class="spacelist">
         <ul>
-            <li each={node in nodes}>
-                <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightSchema} onmouseout={unhighlightSchema}>
-                    {node.id}
+            <li each={space in Array.from(spaces)}>
+                <a class={"disabled": space.hidden} href="#" onclick={toggleHide} onmouseover={highlightSpace} onmouseout={unhighlightSpace}>
+                    {space.name}
                 </a>
-                <span class="numberOfInstances">{node.numberOfInstances}</span>
+                <span class="numberOfInstances">{space.length}</span>
             </li>
         </ul>
     </div>
@@ -159,7 +158,23 @@
     <script>
         this.query = "";
         this.results = [];
-        this.hiddenSchemas = [];
+        this.hiddenSpaces = [];
+        this.spaces = [];
+
+        function groupBy(list, keyGetter) {
+            const map = new Map();
+            list.forEach((item) => {
+                const key = keyGetter(item);
+                const collection = map.get(key);
+                if (!collection) {
+                    map.set(key, [item]);
+                } else {
+                    collection.push(item);
+                }
+            });
+            return map;
+        }
+        
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
@@ -167,10 +182,15 @@
         });
 
         this.on("update", function () {
-            this.nodes = _.orderBy(this.stores.structure.getDatas().nodes, 'numberOfInstances', 'desc');
-            this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
-
-            if(this.stores.structure.is("HIDE_ACTIVE")){
+            let spacesMap = groupBy(this.stores.structure.getDatas().nodes, (node) => {return node.group});
+            this.hiddenSpaces = this.stores.structure.getHiddenSpaces();
+            let mapIt = spacesMap[Symbol.iterator]();
+            this.spaces = [];
+            for(let item of mapIt){
+                let hidden = this.hiddenSpaces.includes(item[0])
+                this.spaces.push({name: item[0], length: item[1].length, hidden: hidden})
+            }
+            if(this.stores.structure.is("HIDE_SPACES_ACTIVE")){
                 if(!$(this.root).hasClass("open")){
                     $(this.root).addClass("open");
                     $(this.refs.query).focus();
@@ -183,22 +203,14 @@
         });
 
         this.togglePanel = function(){
-            RiotPolice.trigger("structure:hide_toggle");
+            RiotPolice.trigger("structure:hide_spaces_toggle");
         }
         this.toggleHide = function(e){
-            RiotPolice.trigger("structure:schema_toggle_hide", e.item.node);
-        }
-        this.hideAll = function(){
-            RiotPolice.trigger("structure:all_schemas_toggle_hide", true);
+            RiotPolice.trigger("structure:space_toggle_hide", e.item.space.name);
         }
         this.showAll = function(){
-            RiotPolice.trigger("structure:all_schemas_toggle_hide", false);
+            RiotPolice.trigger("structure:all_spaces_show");
         }
-        this.highlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_highlight", e.item.node);
-        }
-        this.unhighlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_unhighlight");
-        }
+
     </script>
-</kg-hide-panel>
+</kg-hide-spaces-panel>
