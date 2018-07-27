@@ -231,6 +231,11 @@
             maxRadius: 50
         }
 
+        var maxLinkSize = 50;
+        var maxNodeSize = 80;
+        var nodeRscale;
+        var linkRscale;
+
         this.initialZoom = 0.3;
 
         this.on("mount", () =>  {
@@ -247,6 +252,19 @@
 
             let previousHiddenSchemasCount = this.hiddenSchemas.length;
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
+
+            //Calculating the max numberof instance and link values
+            //to prepare a scale for the node radius and link width
+            var nodesNumOfInstances = datas.nodes.map((o) =>  { return o.numberOfInstances; })
+            var linkValues = datas.links.map((o) =>  {return o.value; })
+            nodeRscale = d3.scaleLog()
+                .domain([1,d3.max(nodesNumOfInstances)])
+                .range([3,maxNodeSize])
+            linkRscale = d3.scaleLog()
+                .domain([1,d3.max(linkValues)])
+                .range([3,maxLinkSize])
+
+
 
             if (!this.svg || previousHiddenSchemasCount !== this.hiddenSchemas.length) {
                 this.nodes = _.filter(datas.nodes, node => !node.hidden);
@@ -416,7 +434,7 @@
                 )
                 .force('collide', d3.forceCollide()
                     .radius((d) => {
-                        return 20;
+                        return nodeRscale(d.numberOfInstances) + 4;
                     })
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
@@ -476,7 +494,7 @@
 
             // Assigning data and behaviour to the different SVG elements
             function restart(){
-
+                
                 links = linksg
                 .selectAll(".link-line")
                 .data(self.links)
@@ -488,7 +506,7 @@
                     d3.select(this).classed("provenance", d.provenance)
                 })
                 .attr("stroke-width", function (d) {
-                   return Math.sqrt(d.value) / 1.5;
+                   return linkRscale(d.value);
                 })
                 .on("mouseover", (d) => {
                     if(d.target_group == d.group){
@@ -550,7 +568,7 @@
 
                         $this.append("circle")
                             .attr("class", "node__circle")
-                            .attr("r", Math.log(d.numberOfInstances) * 4 + 8)
+                            .attr("r", (d)=> {return nodeRscale(d.numberOfInstances)})
                             .append('title').text(d.id);
 
                         $this.append("text")
