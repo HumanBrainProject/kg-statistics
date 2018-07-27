@@ -223,7 +223,7 @@
         this.color = d3.scaleOrdinal(d3.schemeCategory20);
         var polygon;
         var centroid;
-        var scaleFactor = 1.2;
+        var scaleFactor = 1.4;
         var offset = 15;
         var links, nodes, linknodes;
         var circleOpts = {
@@ -231,8 +231,8 @@
             maxRadius: 50
         }
 
-        var maxLinkSize = 50;
-        var maxNodeSize = 80;
+        var maxLinkSize = 40;
+        var maxNodeSize = 60;
         var nodeRscale;
         var linkRscale;
 
@@ -424,17 +424,17 @@
                 .force('link', d3.forceLink()
                     .id(function(d) { return d.id; })
                     .distance( (d) => {
-                        return 100;
+                        return 40;
                     })
                 )
                 .force('charge', d3.forceManyBody()
                     .distanceMin(10)
-                    .distanceMax(height)
-                    .strength(-200)
+                    .distanceMax(height / 2)
+                    .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
                     .radius((d) => {
-                        return nodeRscale(d.numberOfInstances) + 4;
+                        return nodeRscale(d.numberOfInstances) + 8;
                     })
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));

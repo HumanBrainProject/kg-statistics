@@ -17,6 +17,7 @@
 (function () {
     let datas;
     let hiddenSchemas = [];
+    let hiddenSpaces = [];
     let relations;
     let selectedSchema;
     let highlightedSchema;
@@ -26,9 +27,17 @@
     let whitelist = [
         "minds/core/dataset/v0.0.4"
     ];
-
-    window.testdatas = function () {
-        return datas;
+    const hiddenSpacesLocalKey = "hiddenSpaces";
+    const getHiddenGroup = (nodes) => {
+        var map = nodes.reduce((map, node) => {
+            let i = map[node.group] || {};
+            var arr = i["value"] || [];
+            arr.push(node);
+            let storedHiddenSpaces = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
+            map[node.group] = {value: arr, hidden: storedHiddenSpaces.includes(node.group)};
+            return map;
+        }, {});
+        return map;
     }
 
     const loadData = function (datas) {
@@ -56,12 +65,8 @@
                 });
             }
         });
-        let group = datas.nodes.reduce((map, node) => {
-            let i = map[node.group] || []
-            i.push(node)
-            map[node.group] = i
-            return map
-        }, {})
+
+        let group = getHiddenGroup(datas.nodes);
         
         //Hidding nodes with too many connections
         datas.nodes.forEach(node => {
@@ -69,13 +74,24 @@
             node.hidden = false;
             if (relations[node.id] !== undefined && 
                 whitelist.indexOf(node.id) < 0 &&
-                group[node.group].length > minNodeCounts &&
-                relations[node.id].length / group[node.group].length > AppConfig.structure.autoHideThreshold) {
+                group[node.group].value.length > minNodeCounts &&
+                relations[node.id].length / group[node.group].value.length > AppConfig.structure.autoHideThreshold ||
+                group[node.group].hidden
+            ) {
+                
                 node.hidden = true;
             }
         });
 
+
+        for(item in group){
+            if(group[item].hidden){
+                hiddenSpaces.push(item);
+            }
+        }
+
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        
 
         Object.entries(datas.schemas).forEach(([name, schemas]) => {
             Object.entries(schemas).forEach(([version, schema]) => {
@@ -96,7 +112,6 @@
         if (!datas && !structureStore.is("DATAS_LOADING")) {
             structureStore.toggleState("DATAS_LOADING", true);
             $.get("structure.json", function (response) {
-                console.log(response);
                 datas = response;
                 if(datas){
                     loadData(datas);
@@ -116,7 +131,12 @@
     }
 
     const structureStore = new RiotStore("structure",
-        ["DATAS_LOADING", "DATAS_LOADED", "SCHEMA_SELECTED", "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE", "SHOW_MODAL", "SHOW_MENU", "SHOW_STATUS_REPORT"],
+        [
+            "DATAS_LOADING", "DATAS_LOADED", "SCHEMA_SELECTED", 
+            "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
+            "HIDE_SPACES_ACTIVE", "SHOW_MODAL", "SHOW_MENU",
+            "SHOW_STATUS_REPORT"
+        ],
         init, reset);
 
     /**
@@ -177,6 +197,10 @@
         structureStore.toggleState("HIDE_ACTIVE");
         structureStore.notifyChange();
     });
+    structureStore.addAction("structure:hide_spaces_toggle", function () {
+        structureStore.toggleState("HIDE_SPACES_ACTIVE");
+        structureStore.notifyChange();
+    });
 
     structureStore.addAction("structure:schema_toggle_hide", function (schema) {
         if (typeof schema === "string") {
@@ -193,6 +217,28 @@
         structureStore.notifyChange();
     });
 
+    structureStore.addAction("structure:space_toggle_hide", function (space) {
+        let spaceNodes = [];
+        spaceNodes = _.filter(datas.nodes, node => node.group === space)
+        let group = getHiddenGroup(datas.nodes);
+        let hiddenArray = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
+        let previousHiddenState = group[space] && group[space].hidden;
+        if(previousHiddenState){
+            hiddenArray = hiddenArray.slice(1, hiddenArray.indexOf(space));
+        }else{
+            hiddenArray.push(space);
+        }
+        spaceNodes.map( (node) => {
+            node.hidden = !previousHiddenState;
+            return node;
+        });
+        localStorage.setItem(hiddenSpacesLocalKey,JSON.stringify(hiddenArray));
+        group = getHiddenGroup(datas.nodes);
+        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSpaces = hiddenArray;
+        structureStore.notifyChange();
+    });
+
     structureStore.addAction("structure:all_schemas_toggle_hide", function (hide) {
         structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
         highlightedSchema = undefined;
@@ -201,6 +247,25 @@
 
         datas.nodes.forEach(node => { node.hidden = !!hide });
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        structureStore.notifyChange();
+    });
+
+    structureStore.addAction("structure:all_spaces_show", function () {
+        let group = getHiddenGroup(datas.nodes);
+        let spacesToShow = [];
+        for(let space in group){
+            if(group[space].hidden){
+                spacesToShow.push(space);
+            }
+        }
+        datas.nodes.forEach(node => { 
+            if(spacesToShow.includes(node.group)){
+                node.hidden = false;
+            }
+        });
+        hiddenSpaces = [];
+        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        localStorage.removeItem(hiddenSpacesLocalKey);
         structureStore.notifyChange();
     });
 
@@ -235,6 +300,10 @@
 
     structureStore.addInterface("getHiddenSchemas", function () {
         return hiddenSchemas;
+    });
+
+    structureStore.addInterface("getHiddenSpaces", function () {
+        return hiddenSpaces;
     });
 
     structureStore.addInterface("getRelationsOf", function (id) {
