@@ -28,7 +28,8 @@
         "minds/core/dataset/v0.0.4"
     ];
     const hiddenSpacesLocalKey = "hiddenSpaces";
-    const getHiddenGroup = (nodes) => {
+    const hiddenNodesLocalKey = "hiddenNodes";
+    const getGroups = (nodes) => {
         var map = nodes.reduce((map, node) => {
             let i = map[node.group] || {};
             var arr = i["value"] || [];
@@ -66,23 +67,40 @@
             }
         });
 
-        let group = getHiddenGroup(datas.nodes);
+        let group = getGroups(datas.nodes);
+                
+        let toBeHidden;
+        //First use
+        if(!localStorage.getItem(hiddenNodesLocalKey)){
+            toBeHidden = [];
+            //Hidding nodes with too many connections
+            datas.nodes.forEach(node => {
+                node.hash = md5(node.id);
+                node.hidden = false;
+                if (relations[node.id] !== undefined && 
+                    whitelist.indexOf(node.id) < 0 &&
+                    group[node.group].value.length > minNodeCounts &&
+                    relations[node.id].length / group[node.group].value.length > AppConfig.structure.autoHideThreshold 
+                ) {
+                    toBeHidden.push(node.id);
+                }
+            });
+            localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
+        }else{
+            toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
+        }
         
-        //Hidding nodes with too many connections
         datas.nodes.forEach(node => {
             node.hash = md5(node.id);
             node.hidden = false;
             if (relations[node.id] !== undefined && 
                 whitelist.indexOf(node.id) < 0 &&
-                group[node.group].value.length > minNodeCounts &&
-                relations[node.id].length / group[node.group].value.length > AppConfig.structure.autoHideThreshold ||
-                group[node.group].hidden
+                group[node.group].hidden || 
+                toBeHidden.includes(node.id)
             ) {
-                
                 node.hidden = true;
             }
         });
-
 
         for(item in group){
             if(group[item].hidden){
@@ -214,13 +232,14 @@
         }
         schema.hidden = !schema.hidden;
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:space_toggle_hide", function (space) {
         let spaceNodes = [];
         spaceNodes = _.filter(datas.nodes, node => node.group === space)
-        let group = getHiddenGroup(datas.nodes);
+        let group = getGroups(datas.nodes);
         let hiddenArray = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
         let previousHiddenState = group[space] && group[space].hidden;
         if(previousHiddenState){
@@ -233,8 +252,8 @@
             return node;
         });
         localStorage.setItem(hiddenSpacesLocalKey,JSON.stringify(hiddenArray));
-        group = getHiddenGroup(datas.nodes);
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        localStorage.setItem(hiddenNodesLocalKey,JSON.stringify(hiddenSchemas));
         hiddenSpaces = hiddenArray;
         structureStore.notifyChange();
     });
@@ -247,11 +266,18 @@
 
         datas.nodes.forEach(node => { node.hidden = !!hide });
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        localStorage.setItem(hiddenNodesLocalKey,JSON.stringify(hiddenSchemas));
+        if(!hide){
+            hiddenSpaces = [];
+        }else {
+           hiddenSpaces = Object.keys(getGroups(datas.nodes));
+        }
+        localStorage.setItem(hiddenSpacesLocalKey,JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:all_spaces_show", function () {
-        let group = getHiddenGroup(datas.nodes);
+        let group = getGroups(datas.nodes);
         let spacesToShow = [];
         for(let space in group){
             if(group[space].hidden){
@@ -266,6 +292,7 @@
         hiddenSpaces = [];
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.removeItem(hiddenSpacesLocalKey);
+        localStorage.setItem(hiddenNodesLocalKey,JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
