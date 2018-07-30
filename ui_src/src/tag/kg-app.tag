@@ -86,7 +86,8 @@
         }
 
         kg-search-panel,
-        kg-hide-panel{
+        kg-hide-panel,
+        kg-hide-spaces-panel{
             position:absolute;
             width:var(--search-panel-width);
             height:calc(100vh - var(--topbar-height) - 50px);
@@ -134,6 +135,7 @@
         <kg-topbar></kg-topbar>
         <kg-body></kg-body>
         <kg-hide-panel></kg-hide-panel>
+        <kg-hide-spaces-panel></kg-hide-spaces-panel>
         <kg-search-panel></kg-search-panel>
         <kg-sidebar></kg-sidebar>
         <kg-instances></kg-instances>
