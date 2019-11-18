@@ -35,7 +35,7 @@
             var arr = i["value"] || [];
             arr.push(node);
             let storedHiddenSpaces = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
-            map[node.group] = {value: arr, hidden: storedHiddenSpaces.includes(node.group)};
+            map[node.group] = { value: arr, hidden: storedHiddenSpaces.includes(node.group) };
             return map;
         }, {});
         return map;
@@ -68,48 +68,48 @@
         });
 
         let group = getGroups(datas.nodes);
-                
+
         let toBeHidden;
         //First use
-        if(!localStorage.getItem(hiddenNodesLocalKey)){
+        if (!localStorage.getItem(hiddenNodesLocalKey)) {
             toBeHidden = [];
             //Hidding nodes with too many connections
             datas.nodes.forEach(node => {
                 node.hash = md5(node.id);
                 node.hidden = false;
-                if (relations[node.id] !== undefined && 
+                if (relations[node.id] !== undefined &&
                     whitelist.indexOf(node.id) < 0 &&
                     group[node.group].value.length > minNodeCounts &&
-                    relations[node.id].length / group[node.group].value.length > AppConfig.structure.autoHideThreshold 
+                    relations[node.id].length / group[node.group].value.length > AppConfig.structure.autoHideThreshold
                 ) {
                     toBeHidden.push(node.id);
                 }
             });
             localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
-        }else{
+        } else {
             toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
         }
-        
+
         datas.nodes.forEach(node => {
             node.hash = md5(node.id);
             node.hidden = false;
-            if (relations[node.id] !== undefined && 
+            if (relations[node.id] !== undefined &&
                 whitelist.indexOf(node.id) < 0 &&
-                group[node.group].hidden || 
+                group[node.group].hidden ||
                 toBeHidden.includes(node.id)
             ) {
                 node.hidden = true;
             }
         });
 
-        for(item in group){
-            if(group[item].hidden){
+        for (item in group) {
+            if (group[item].hidden) {
                 hiddenSpaces.push(item);
             }
         }
 
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
-        
+
 
         Object.entries(datas.schemas).forEach(([name, schemas]) => {
             Object.entries(schemas).forEach(([version, schema]) => {
@@ -117,7 +117,7 @@
                     const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
                     const m2 = p.name && p.name.length && p.name.match(/.+\/(.+)$/);
                     const m3 = p.name && p.name.length && p.name.match(/.+:(.+)$/);
-                    p.shortName = (m1 && m1.length===2)?m1[1]:(m2 && m2.length===2)?m2[1]:(m3 && m3.length===2)?m3[1]:p.name;
+                    p.shortName = (m1 && m1.length === 2) ? m1[1] : (m2 && m2.length === 2) ? m2[1] : (m3 && m3.length === 2) ? m3[1] : p.name;
                 });
             });
         });
@@ -129,13 +129,13 @@
     const init = function () {
         if (!datas && !structureStore.is("DATAS_LOADING")) {
             structureStore.toggleState("DATAS_LOADING", true);
-            $.get("structure.json", function (response) {
+            $.get(window.location.host + "/statistics/structure.json", function (response) {
                 datas = response;
-                if(datas){
+                if (datas) {
                     loadData(datas);
-                }else{
+                } else {
                     structureStore.toggleState("DATAS_LOADING", false);
-                    if(retrigger){
+                    if (retrigger) {
                         retrigger = false;
                         init();
                     }
@@ -150,7 +150,7 @@
 
     const structureStore = new RiotStore("structure",
         [
-            "DATAS_LOADING", "DATAS_LOADED", "SCHEMA_SELECTED", 
+            "DATAS_LOADING", "DATAS_LOADED", "SCHEMA_SELECTED",
             "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
             "HIDE_SPACES_ACTIVE", "SHOW_MODAL", "SHOW_MENU",
             "SHOW_STATUS_REPORT"
@@ -242,18 +242,18 @@
         let group = getGroups(datas.nodes);
         let hiddenArray = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
         let previousHiddenState = group[space] && group[space].hidden;
-        if(previousHiddenState){
+        if (previousHiddenState) {
             hiddenArray = hiddenArray.slice(1, hiddenArray.indexOf(space));
-        }else{
+        } else {
             hiddenArray.push(space);
         }
-        spaceNodes.map( (node) => {
+        spaceNodes.map((node) => {
             node.hidden = !previousHiddenState;
             return node;
         });
-        localStorage.setItem(hiddenSpacesLocalKey,JSON.stringify(hiddenArray));
+        localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenArray));
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
-        localStorage.setItem(hiddenNodesLocalKey,JSON.stringify(hiddenSchemas));
+        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         hiddenSpaces = hiddenArray;
         structureStore.notifyChange();
     });
@@ -266,33 +266,33 @@
 
         datas.nodes.forEach(node => { node.hidden = !!hide });
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
-        localStorage.setItem(hiddenNodesLocalKey,JSON.stringify(hiddenSchemas));
-        if(!hide){
+        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
+        if (!hide) {
             hiddenSpaces = [];
-        }else {
-           hiddenSpaces = Object.keys(getGroups(datas.nodes));
+        } else {
+            hiddenSpaces = Object.keys(getGroups(datas.nodes));
         }
-        localStorage.setItem(hiddenSpacesLocalKey,JSON.stringify(hiddenSpaces));
+        localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:all_spaces_show", function () {
         let group = getGroups(datas.nodes);
         let spacesToShow = [];
-        for(let space in group){
-            if(group[space].hidden){
+        for (let space in group) {
+            if (group[space].hidden) {
                 spacesToShow.push(space);
             }
         }
-        datas.nodes.forEach(node => { 
-            if(spacesToShow.includes(node.group)){
+        datas.nodes.forEach(node => {
+            if (spacesToShow.includes(node.group)) {
                 node.hidden = false;
             }
         });
         hiddenSpaces = [];
         hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.removeItem(hiddenSpacesLocalKey);
-        localStorage.setItem(hiddenNodesLocalKey,JSON.stringify(hiddenSchemas));
+        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
@@ -338,9 +338,9 @@
     });
 
     structureStore.addInterface("hasRelations", function (id, filterHidden) {
-        if(filterHidden){
-            let schemaRelations = _(relations[id] || []).filter(rel => hiddenSchemas.indexOf(rel.relatedSchema) === -1).value();
-            return !!schemaRelations.length; 
+        if (filterHidden) {
+            let schemaRelations = _(relations[id] || []).filter(rel => hiddenSchemas.indexOf(rel.relatedSchema) === -1).value();
+            return !!schemaRelations.length;
         } else {
             return (relations[id] || []).length;
         }
