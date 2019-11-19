@@ -129,11 +129,7 @@
     const init = function () {
         if (!datas && !structureStore.is("DATAS_LOADING")) {
             structureStore.toggleState("DATAS_LOADING", true);
-<<<<<<< HEAD
-            $.get("http://localhost/statistics/data", function (response) {
-=======
-            $.get("http://localhost/statistics/data/structure.json", function (response) {
->>>>>>> Corrected data path
+            $.get(window.location.protocol + "//" + window.location.host + "/statistics/data/structure.json", function (response) {
                 datas = response;
                 if (datas) {
                     loadData(datas);
