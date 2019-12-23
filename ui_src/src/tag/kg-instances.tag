@@ -201,7 +201,7 @@
         </div>
         <div class="loading-panel {show: isLoading}">
             <span class="loading-spinner">
-                <img src="img/hbp-spinner-logo.svg" alt="loading..." /> 
+                <img src="img/ebrains.svg" alt="loading..." />
             </span>
             <span class="loading-label">Loading instances ( {loadingStats.current} / {loadingStats.total} )</span>
         </div>
