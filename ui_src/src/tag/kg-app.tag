@@ -99,10 +99,6 @@
             transition:right 0.5s cubic-bezier(.34,1.06,.63,.93);
         }
 
-        .menu-open{
-            transform:translateX(-200px);
-        }
-
         .kg-app-container{
             position:relative;
             width:100vw;
@@ -119,28 +115,152 @@
             height:100vh;
             width:200px;
         }
+
+        .loading-panel {
+            position: absolute;
+            width: 380px;
+            height: 80px;
+            top: -200px;
+            margin-left: calc(50% - 180px);
+            padding: 20px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #404040;
+            transition: margin-top 0.25s ease-in;
+            -webkit-box-shadow: 3px 3px 6px #8f8a8a;
+            box-shadow: 3px 3px 6px black;
+        }
+
+        .loading-panel.show {
+            top: calc(40% - 40px);
+        }
+
+
+       .loading-panel .loading-spinner {
+            position: absolute;
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+        }
+
+        .loading-panel .loading-spinner img {
+            -webkit-animation: loading-spinner-rotate 0.5s infinite linear;
+            animation: loading-spinner-rotate 0.5s infinite linear;
+        }
+
+        .loading-panel .loading-label {
+            display: inline-block;
+            padding: 12px 0 0 55px;
+        }
+
+        @-webkit-keyframes loading-spinner-rotate {
+            0% {
+                -webkit-transform: rotateZ(0deg)
+            }
+            100% {
+                -webkit-transform: rotateZ(360deg)
+            }
+        }
+
+        @keyframes loading-spinner-rotate {
+            0% {
+                transform: rotateZ(0deg);
+                -webkit-transform: rotateZ(0deg);
+            }
+            100% {
+                transform: rotateZ(0deg);
+                -webkit-transform: rotateZ(360deg);
+            }
+        }
+
+        .error-panel {
+            position: absolute;
+            width: 360px;
+            top: -200px;
+            margin-left: calc(50% - 180px);
+            padding: 20px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #404040;
+            transition: margin-top 0.25s ease-in;
+            box-shadow: 3px 3px 6px black;
+        }
+
+        .error-panel.show {
+            top: calc(40% - 60px);
+        }
+
+        .error-panel .error-message {
+            display: inline-block;
+            font-size: 1em;
+            line-height: 1.5em;
+            text-align: center;
+        }
+
+        .error-panel .error-navigation {
+            display: flex;
+            justify-content: space-evenly;
+            padding-top: 15px;
+        }
+
+        .error-panel button {
+            margin: 0;
+            padding: 11px 28px;
+            border: 0;
+            border-radius: 3px;
+            background-color: #1f1f1f;
+            color: #c9cccf;
+            font-size: 1em;
+            text-align: center;
+            transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in;
+            cursor: pointer;
+        }
+
+        .error-panel button:hover {
+            box-shadow: 3px 3px 6px black;
+            background-color: #292929;
+            color: white;
+        }
+
     </style>
-    <script>
-        this.showMenu = false;
-
-        this.on("mount", function () {
-            RiotPolice.on("showmenu", this.update);
-        });
-
-        this.on("update", function(){
-            this.showMenu = !this.showMenu;
-        })
-    </script>
-    <div class="kg-app-container {menu-open:showMenu}">
+    <div class="kg-app-container ">
         <kg-topbar></kg-topbar>
         <kg-body></kg-body>
         <kg-hide-panel></kg-hide-panel>
         <kg-hide-spaces-panel></kg-hide-spaces-panel>
         <kg-search-panel></kg-search-panel>
         <kg-sidebar></kg-sidebar>
-        <kg-instances></kg-instances>
-        <kg-api-test></kg-api-test>
-        <kg-status-report></kg-status-report>
+        <div class="loading-panel {show: isLoading}">
+            <span class="loading-spinner">
+                <img src="img/ebrains.svg" alt="loading..." />
+            </span>
+            <span class="loading-label">Loading structure</span>
+        </div>
+        <div class="error-panel {show: hasError}">
+            <span class="error-message">The service is temporary unavailable. Please retry in a moment.</span>
+            <div class="error-navigation">
+                <button onClick={retry}>Retry</button>
+        </div>
     </div>
-    <kg-menu-popup></kg-menu-popup>
+    </div>
+
+     <script>
+        this.hasError = false;
+        this.isLoading = false;
+        this.isLoaded = false;
+
+        this.on("mount", function () {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+            RiotPolice.trigger("structure:load");
+        });
+
+        this.on("update", function () {
+            this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
+            this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
+            this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
+        });
+
+        this.retry = e => RiotPolice.trigger("structure:load");
+    </script>
 </kg-app>

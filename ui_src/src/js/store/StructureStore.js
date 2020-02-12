@@ -15,7 +15,7 @@
 */
 
 (function () {
-    let datas;
+    let structure;
     let hiddenSchemas = [];
     let hiddenSpaces = [];
     let relations;
@@ -25,7 +25,7 @@
     let searchResults = [];
     let minNodeCounts = 6;
     let whitelist = [
-        "minds/core/dataset/v0.0.4"
+        "minds/core/structureet/v0.0.4"
     ];
     const hiddenSpacesLocalKey = "hiddenSpaces";
     const hiddenNodesLocalKey = "hiddenNodes";
@@ -42,9 +42,9 @@
         return map;
     }
 
-    const loadData = function (datas) {
+    const loadData = function (structure) {
         relations = {};
-        datas.links.forEach(link => {
+        structure.links.forEach(link => {
             link.provenance = link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance)
             if (relations[link.source] === undefined) {
                 relations[link.source] = [];
@@ -68,14 +68,14 @@
             }
         });
 
-        let group = getGroups(datas.nodes);
+        let group = getGroups(structure.nodes);
 
         let toBeHidden;
         //First use
         if (!localStorage.getItem(hiddenNodesLocalKey)) {
             toBeHidden = [];
             //Hidding nodes with too many connections
-            datas.nodes.forEach(node => {
+            structure.nodes.forEach(node => {
                 node.hash = md5(node.id);
                 node.hidden = false;
                 if (relations[node.id] !== undefined &&
@@ -91,7 +91,7 @@
             toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
         }
 
-        datas.nodes.forEach(node => {
+        structure.nodes.forEach(node => {
             node.hash = md5(node.id);
             node.hidden = false;
             if (relations[node.id] !== undefined &&
@@ -109,10 +109,10 @@
             }
         }
 
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
 
 
-        Object.entries(datas.schemas).forEach(([name, schemas]) => {
+        Object.entries(structure.schemas).forEach(([name, schemas]) => {
             Object.entries(schemas).forEach(([version, schema]) => {
                 schema.properties.forEach(p => {
                     const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
@@ -122,8 +122,8 @@
                 });
             });
         });
-        structureStore.toggleState("DATAS_LOADED", true);
-        structureStore.toggleState("DATAS_LOADING", false);
+        structureStore.toggleState("STRUCTURE_LOADED", true);
+        structureStore.toggleState("STRUCTURE_LOADING", false);
         structureStore.notifyChange();
     }
 
@@ -144,22 +144,37 @@
       };
 
     var retrigger = true;
-    const init = function () {
-        if (!datas && !structureStore.is("DATAS_LOADING")) {
-            structureStore.toggleState("DATAS_LOADING", true);
-            $.get(`${window.location.protocol}//${window.location.host}/api/types?stage=LIVE&withProperties=false`, function (response) {
+    const loadStructure = function () {
+        if (!structure && !structureStore.is("STRUCTURE_LOADING")) {
+            structureStore.toggleState("STRUCTURE_LOADING", true);
+            structureStore.toggleState("STRUCTURE_ERROR", false);
+            structureStore.notifyChange();
+            $.get(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
+            .done((response, status, xhr) => {
+                //console.log(xhr.getAllResponseHeaders());
+                //console.log(xhr.getResponseHeader('location'));
                 if (response) {
-                    datas = simplifySemantics(response)
-                    loadData(datas);
+                    structure = simplifySemantics(response)
+                    loadData(structure);
                 } else {
-                    structureStore.toggleState("DATAS_LOADING", false);
+                    structureStore.toggleState("STRUCTURE_LOADING", false);
                     if (retrigger) {
                         retrigger = false;
-                        init();
+                        loadStructure();
                     }
                 }
+            })
+            .fail((e) => {
+                structureStore.toggleState("STRUCTURE_ERROR", true);
+                structureStore.toggleState("STRUCTURE_LOADED", false);
+                structureStore.toggleState("STRUCTURE_LOADING", false);
+                structureStore.notifyChange();
             });
         }
+    }
+
+    const init = function () {
+        
     }
 
     const reset = function () {
@@ -167,21 +182,24 @@
     }
 
     const structureStore = new RiotStore("structure",
-        [
-            "DATAS_LOADING", "DATAS_LOADED", "SCHEMA_SELECTED",
-            "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
-            "HIDE_SPACES_ACTIVE", "SHOW_MODAL", "SHOW_MENU",
-            "SHOW_STATUS_REPORT"
-        ],
-        init, reset);
+    [
+        "STRUCTURE_LOADING", "STRUCTURE_ERROR",  "STRUCTURE_LOADED", "SCHEMA_SELECTED",
+        "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
+        "HIDE_SPACES_ACTIVE"
+    ],
+    init, reset);
 
     /**
      * Store trigerrable actions
      */
 
+    structureStore.addAction("structure:load", function () {
+        loadStructure();
+    });
+
     structureStore.addAction("structure:schema_select", function (schema) {
         if (typeof schema === "string") {
-            schema = _.find(datas.nodes, node => node.id === schema);
+            schema = _.find(structure.nodes, node => node.id === schema);
         }
         if (schema !== selectedSchema || schema === undefined) {
             structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
@@ -200,7 +218,7 @@
 
     structureStore.addAction("structure:schema_highlight", function (schema) {
         if (typeof schema === "string") {
-            schema = _.find(datas.nodes, node => node.id === schema);
+            schema = _.find(structure.nodes, node => node.id === schema);
         }
         structureStore.toggleState("SCHEMA_HIGHLIGHTED", true);
         highlightedSchema = schema;
@@ -216,7 +234,7 @@
     structureStore.addAction("structure:search", function (query) {
         if (query) {
             searchQuery = query;
-            searchResults = _.filter(datas.nodes, node => node.id.match(new RegExp(query, "g")));
+            searchResults = _.filter(structure.nodes, node => node.id.match(new RegExp(query, "g")));
         } else {
             searchQuery = query;
             searchResults = [];
@@ -240,7 +258,7 @@
 
     structureStore.addAction("structure:schema_toggle_hide", function (schema) {
         if (typeof schema === "string") {
-            schema = _.find(datas.nodes, node => node.id === schema);
+            schema = _.find(structure.nodes, node => node.id === schema);
         }
         if (schema !== undefined && schema === selectedSchema) {
             structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
@@ -249,15 +267,15 @@
             selectedSchema = undefined;
         }
         schema.hidden = !schema.hidden;
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:space_toggle_hide", function (space) {
         let spaceNodes = [];
-        spaceNodes = _.filter(datas.nodes, node => node.group === space)
-        let group = getGroups(datas.nodes);
+        spaceNodes = _.filter(structure.nodes, node => node.group === space)
+        let group = getGroups(structure.nodes);
         let hiddenArray = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
         let previousHiddenState = group[space] && group[space].hidden;
         if (previousHiddenState) {
@@ -270,7 +288,7 @@
             return node;
         });
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenArray));
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         hiddenSpaces = hiddenArray;
         structureStore.notifyChange();
@@ -282,51 +300,38 @@
         structureStore.toggleState("SCHEMA_SELECTED", false);
         selectedSchema = undefined;
 
-        datas.nodes.forEach(node => { node.hidden = !!hide });
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        structure.nodes.forEach(node => { node.hidden = !!hide });
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         if (!hide) {
             hiddenSpaces = [];
         } else {
-            hiddenSpaces = Object.keys(getGroups(datas.nodes));
+            hiddenSpaces = Object.keys(getGroups(structure.nodes));
         }
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:all_spaces_show", function () {
-        let group = getGroups(datas.nodes);
+        let group = getGroups(structure.nodes);
         let spacesToShow = [];
         for (let space in group) {
             if (group[space].hidden) {
                 spacesToShow.push(space);
             }
         }
-        datas.nodes.forEach(node => {
+        structure.nodes.forEach(node => {
             if (spacesToShow.includes(node.group)) {
                 node.hidden = false;
             }
         });
         hiddenSpaces = [];
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.removeItem(hiddenSpacesLocalKey);
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("modal:show_postman_tests", function (show) {
-        structureStore.toggleState("SHOW_MODAL", show);
-        structureStore.notifyChange();
-    })
-
-    structureStore.addAction("modal:show_status_report", function (show) {
-        structureStore.toggleState("SHOW_STATUS_REPORT", show);
-        structureStore.notifyChange();
-    })
-    structureStore.addAction("modal:show_menu", function (show) {
-        structureStore.toggleState("SHOW_MENU", show);
-        structureStore.notifyChange();
-    })
     /**
      * Store public interfaces
      */
@@ -340,7 +345,7 @@
     });
 
     structureStore.addInterface("getDatas", function () {
-        return datas;
+        return structure;
     });
 
     structureStore.addInterface("getHiddenSchemas", function () {

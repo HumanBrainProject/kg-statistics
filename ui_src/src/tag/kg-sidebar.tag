@@ -210,13 +210,11 @@
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
-            RiotPolice.requestStore("instances", this);
             RiotPolice.on("structure.changed", this.update);
         });
 
         this.on("unmount", function(){
             RiotPolice.off("structure.changed", this.update);
-            RiotPolice.releaseStore("instances", this);
             RiotPolice.releaseStore("structure", this);
         });
 

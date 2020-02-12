@@ -74,7 +74,6 @@
         </div>    
         <div class="header-right" >
             <div class="date" if={date}>KG State at : {date}</div>
-            <div class="menu"  onclick={toggleModal}><div class="menu-btn"><i class="fa fa-bars"></i></div></div>
         </div>
     </div>
 
@@ -86,13 +85,8 @@
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
-        this.toggleModal = function(){
-            this.showModal = !this.showModal;
-            RiotPolice.trigger("showmenu", this.showModal);
-            
-        }
         this.on("update", function(){
-            if(this.stores.structure.is("DATAS_LOADED")){
+            if(this.stores.structure.is("STRUCTURE_LOADED")){
                 this.date = new Date(this.stores.structure.getDatas().lastUpdate);
             }
         });

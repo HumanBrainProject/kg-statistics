@@ -53822,232 +53822,7 @@ class RiotStore {
 */
 
 (function () {
-    let querySchema = null;
-    let queryResults = [];
-    let total = 0;
-    let comparison = null;
-
-    const init = function () {
-    
-    }
-
-    const reset = function () {
-
-    }
-
-    const instancesStore = new RiotStore("instances", 
-                                        ["ACTIVE", "QUERY_LOADING", "QUERY_LOADED", "QUERY_ERROR", "COMPARISON"], 
-                                        init, reset);
-
-    const doQuery = (resource, requestUrl) => {
-        $.get(requestUrl)
-            .done((response, status, xhr) => {
-                //console.log(xhr.getAllResponseHeaders());
-                //console.log(xhr.getResponseHeader('location'));
-                if (typeof response === "object") {
-                    if (instancesStore.is("ACTIVE") && resource === querySchema.id) {
-                        total = response.total;
-                        response.results.forEach(i => {
-                            const m = i.resultId && i.resultId.match(/.*\/v0\/data\/(.*\/.*\/.*)\/(.*)\/(.*)$/);
-                            if (m && m.length === 4) {
-                                i.schema = m[1];
-                                i.version = m[2];
-                                i.name = m[3];
-                                i.title = i.schema + " (" + i.version + ")";
-                            } else {
-                                i.title = i.resultId;
-                            }
-                        });
-                        queryResults.push(...response.results);
-                        instancesStore.notifyChange();
-        
-                        const next = response 
-                            && response.links 
-                            && response.links.next
-                            && response.links.next.href
-                        const m = next && next.match(/.*(\/v0\/data\/.*)$/); // remove absolute path
-                        const nextRequestUrl = m && m.length === 2 && m[1];
-                        if (nextRequestUrl) {
-                            doQuery(resource, nextRequestUrl);
-                        } else {
-                            instancesStore.toggleState("QUERY_LOADED", true);
-                            instancesStore.toggleState("QUERY_LOADING", false);
-                            instancesStore.notifyChange();
-                        }
-                    }
-                } else {
-                    if (false && typeof response === "string" && /.*<base href="https:\/\/services-dev\.humanbrainproject\.eu\/oidc\/">/.test(response)) {
-                        window.location.replace("https://services-dev.humanbrainproject.eu/oidc/login");
-                    } else {
-                        instancesStore.toggleState("QUERY_ERROR", true);
-                        instancesStore.toggleState("QUERY_LOADED", false);
-                        instancesStore.toggleState("QUERY_LOADING", false);
-                        instancesStore.notifyChange();
-                    }
-                }
-            })
-            .fail((e) => {
-                instancesStore.toggleState("QUERY_ERROR", true);
-                instancesStore.toggleState("QUERY_LOADED", false);
-                instancesStore.toggleState("QUERY_LOADING", false);
-                instancesStore.notifyChange();
-            });
-    };
-      
-    const startQuerying = () => {
-        queryResults = [];
-        total = 0;
-        doResetComparison();
-
-        if (instancesStore.is("QUERY_ERROR"))
-            instancesStore.toggleState("QUERY_ERROR", false);
-        if (!instancesStore.is("COMPARISON"))
-            instancesStore.toggleState("COMPARISON", true);
-        if (!instancesStore.is("ACTIVE"))
-            instancesStore.toggleState("ACTIVE", true);
-        instancesStore.notifyChange();
-
-        if (!instancesStore.is("QUERY_LOADING"))
-            instancesStore.toggleState("QUERY_LOADING", true);
-        instancesStore.notifyChange();
-
-        doQuery(querySchema.id, "/v0/data/" + querySchema.id + "?from=0&size=50&fields=all&deprecated=false&published=true");
-    }
-
-    const doResetComparison = () => {
-        comparison = {
-            instance1: null,
-            instance2: null,
-            properties: []
-        };
-        querySchema.properties.forEach(p => {
-            comparison.properties.push({name: p.name, fullName: p.fullName, shortName: p.shortName});
-        });
-    };
-
-    doClose = () => {
-        instancesStore.toggleState("ACTIVE", false);
-        instancesStore.toggleState("QUERY_ERROR", false);
-        instancesStore.toggleState("QUERY_LOADING", false);
-        instancesStore.toggleState("QUERY_LOADED", false);
-        instancesStore.toggleState("COMPARISON", false);
-
-        querySchema = null;
-        queryResults = [];
-        total = 0;
-        comparison = null;
-        instancesStore.notifyChange();
-    };
-
-    /**
-     * Store trigerrable actions
-     */
-
-    instancesStore.addAction("instances:show", function (schema) {
-        if (schema) {
-            querySchema = schema;
-            startQuerying();
-        }
-    });
-
-    instancesStore.addAction("instances:retry", function () {
-        if (querySchema)
-            startQuerying();
-        else
-            doClose();
-    });
-
-    instancesStore.addAction("instances:close", function () {
-        doClose();
-    });
-
-    instancesStore.addAction("instances:reset-comparison", function () {
-        doResetComparison();
-        instancesStore.toggleState("COMPARISON", true);
-        instancesStore.notifyChange();
-    });
-
-    instancesStore.addAction("instances:select4comparison", function (instance) {
-        if (!comparison.last)
-            comparison.last = 2;
-        const prev = comparison.last;
-        comparison.last = ((comparison.last + 2) % 2) + 1;
-
-        const movePrevious = !(comparison.last === 2 && comparison["instance2"] === null);
-
-        if (movePrevious)
-            comparison["instance" + prev] = comparison["instance" + comparison.last];
-        comparison["instance" + comparison.last] = instance;
-
-        comparison.properties.forEach(p => {
-            if (movePrevious)
-                p["instance" + prev] = p["instance" + comparison.last];
-            let value = instance.source[p.name];
-            p["instance" + comparison.last] = value;
-        });
-
-        instancesStore.toggleState("COMPARISON", true);
-        instancesStore.notifyChange();
-    });
-
-
-    /**
-     * Store public interfaces
-     */
-
-    instancesStore.addInterface("getQuerySchema", function () {
-        return querySchema;
-    });
-
-    instancesStore.addInterface("getQueryResults", function () {
-        return queryResults;
-    });
-
-    instancesStore.addInterface("getComparison", function () {
-        return comparison;
-    });
-
-    instancesStore.addInterface("getLoadingStats", function () {
-        if (total > 0) {
-            if (queryResults && queryResults.length)
-                return {
-                    current: queryResults.length,
-                    percentage: Math.floor(100 * queryResults.length/total),
-                    total: total
-                };
-            return {
-                current: 0,
-                percentage: 0,
-                total: total
-            };
-        }
-        return {
-            current: 0,
-            percentage: 100,
-            total: 0
-        };
-    });
-
-    RiotPolice.registerStore(instancesStore);
-})();
-/*
-*   Copyright (c) 2018, EPFL/Human Brain Project PCO
-*
-*   Licensed under the Apache License, Version 2.0 (the "License");
-*   you may not use this file except in compliance with the License.
-*   You may obtain a copy of the License at
-*
-*       http://www.apache.org/licenses/LICENSE-2.0
-*
-*   Unless required by applicable law or agreed to in writing, software
-*   distributed under the License is distributed on an "AS IS" BASIS,
-*   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*   See the License for the specific language governing permissions and
-*   limitations under the License.
-*/
-
-(function () {
-    let datas;
+    let structure;
     let hiddenSchemas = [];
     let hiddenSpaces = [];
     let relations;
@@ -54057,7 +53832,7 @@ class RiotStore {
     let searchResults = [];
     let minNodeCounts = 6;
     let whitelist = [
-        "minds/core/dataset/v0.0.4"
+        "minds/core/structureet/v0.0.4"
     ];
     const hiddenSpacesLocalKey = "hiddenSpaces";
     const hiddenNodesLocalKey = "hiddenNodes";
@@ -54074,9 +53849,9 @@ class RiotStore {
         return map;
     }
 
-    const loadData = function (datas) {
+    const loadData = function (structure) {
         relations = {};
-        datas.links.forEach(link => {
+        structure.links.forEach(link => {
             link.provenance = link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance)
             if (relations[link.source] === undefined) {
                 relations[link.source] = [];
@@ -54100,14 +53875,14 @@ class RiotStore {
             }
         });
 
-        let group = getGroups(datas.nodes);
+        let group = getGroups(structure.nodes);
 
         let toBeHidden;
         //First use
         if (!localStorage.getItem(hiddenNodesLocalKey)) {
             toBeHidden = [];
             //Hidding nodes with too many connections
-            datas.nodes.forEach(node => {
+            structure.nodes.forEach(node => {
                 node.hash = md5(node.id);
                 node.hidden = false;
                 if (relations[node.id] !== undefined &&
@@ -54123,7 +53898,7 @@ class RiotStore {
             toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
         }
 
-        datas.nodes.forEach(node => {
+        structure.nodes.forEach(node => {
             node.hash = md5(node.id);
             node.hidden = false;
             if (relations[node.id] !== undefined &&
@@ -54141,10 +53916,10 @@ class RiotStore {
             }
         }
 
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
 
 
-        Object.entries(datas.schemas).forEach(([name, schemas]) => {
+        Object.entries(structure.schemas).forEach(([name, schemas]) => {
             Object.entries(schemas).forEach(([version, schema]) => {
                 schema.properties.forEach(p => {
                     const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
@@ -54154,8 +53929,8 @@ class RiotStore {
                 });
             });
         });
-        structureStore.toggleState("DATAS_LOADED", true);
-        structureStore.toggleState("DATAS_LOADING", false);
+        structureStore.toggleState("STRUCTURE_LOADED", true);
+        structureStore.toggleState("STRUCTURE_LOADING", false);
         structureStore.notifyChange();
     }
 
@@ -54176,22 +53951,37 @@ class RiotStore {
       };
 
     var retrigger = true;
-    const init = function () {
-        if (!datas && !structureStore.is("DATAS_LOADING")) {
-            structureStore.toggleState("DATAS_LOADING", true);
-            $.get(`${window.location.protocol}//${window.location.host}/api/types?stage=LIVE&withProperties=false`, function (response) {
+    const loadStructure = function () {
+        if (!structure && !structureStore.is("STRUCTURE_LOADING")) {
+            structureStore.toggleState("STRUCTURE_LOADING", true);
+            structureStore.toggleState("STRUCTURE_ERROR", false);
+            structureStore.notifyChange();
+            $.get(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
+            .done((response, status, xhr) => {
+                //console.log(xhr.getAllResponseHeaders());
+                //console.log(xhr.getResponseHeader('location'));
                 if (response) {
-                    datas = simplifySemantics(response)
-                    loadData(datas);
+                    structure = simplifySemantics(response)
+                    loadData(structure);
                 } else {
-                    structureStore.toggleState("DATAS_LOADING", false);
+                    structureStore.toggleState("STRUCTURE_LOADING", false);
                     if (retrigger) {
                         retrigger = false;
-                        init();
+                        loadStructure();
                     }
                 }
+            })
+            .fail((e) => {
+                structureStore.toggleState("STRUCTURE_ERROR", true);
+                structureStore.toggleState("STRUCTURE_LOADED", false);
+                structureStore.toggleState("STRUCTURE_LOADING", false);
+                structureStore.notifyChange();
             });
         }
+    }
+
+    const init = function () {
+        
     }
 
     const reset = function () {
@@ -54199,21 +53989,24 @@ class RiotStore {
     }
 
     const structureStore = new RiotStore("structure",
-        [
-            "DATAS_LOADING", "DATAS_LOADED", "SCHEMA_SELECTED",
-            "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
-            "HIDE_SPACES_ACTIVE", "SHOW_MODAL", "SHOW_MENU",
-            "SHOW_STATUS_REPORT"
-        ],
-        init, reset);
+    [
+        "STRUCTURE_LOADING", "STRUCTURE_ERROR",  "STRUCTURE_LOADED", "SCHEMA_SELECTED",
+        "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
+        "HIDE_SPACES_ACTIVE"
+    ],
+    init, reset);
 
     /**
      * Store trigerrable actions
      */
 
+    structureStore.addAction("structure:load", function () {
+        loadStructure();
+    });
+
     structureStore.addAction("structure:schema_select", function (schema) {
         if (typeof schema === "string") {
-            schema = _.find(datas.nodes, node => node.id === schema);
+            schema = _.find(structure.nodes, node => node.id === schema);
         }
         if (schema !== selectedSchema || schema === undefined) {
             structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
@@ -54232,7 +54025,7 @@ class RiotStore {
 
     structureStore.addAction("structure:schema_highlight", function (schema) {
         if (typeof schema === "string") {
-            schema = _.find(datas.nodes, node => node.id === schema);
+            schema = _.find(structure.nodes, node => node.id === schema);
         }
         structureStore.toggleState("SCHEMA_HIGHLIGHTED", true);
         highlightedSchema = schema;
@@ -54248,7 +54041,7 @@ class RiotStore {
     structureStore.addAction("structure:search", function (query) {
         if (query) {
             searchQuery = query;
-            searchResults = _.filter(datas.nodes, node => node.id.match(new RegExp(query, "g")));
+            searchResults = _.filter(structure.nodes, node => node.id.match(new RegExp(query, "g")));
         } else {
             searchQuery = query;
             searchResults = [];
@@ -54272,7 +54065,7 @@ class RiotStore {
 
     structureStore.addAction("structure:schema_toggle_hide", function (schema) {
         if (typeof schema === "string") {
-            schema = _.find(datas.nodes, node => node.id === schema);
+            schema = _.find(structure.nodes, node => node.id === schema);
         }
         if (schema !== undefined && schema === selectedSchema) {
             structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
@@ -54281,15 +54074,15 @@ class RiotStore {
             selectedSchema = undefined;
         }
         schema.hidden = !schema.hidden;
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:space_toggle_hide", function (space) {
         let spaceNodes = [];
-        spaceNodes = _.filter(datas.nodes, node => node.group === space)
-        let group = getGroups(datas.nodes);
+        spaceNodes = _.filter(structure.nodes, node => node.group === space)
+        let group = getGroups(structure.nodes);
         let hiddenArray = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
         let previousHiddenState = group[space] && group[space].hidden;
         if (previousHiddenState) {
@@ -54302,7 +54095,7 @@ class RiotStore {
             return node;
         });
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenArray));
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         hiddenSpaces = hiddenArray;
         structureStore.notifyChange();
@@ -54314,51 +54107,38 @@ class RiotStore {
         structureStore.toggleState("SCHEMA_SELECTED", false);
         selectedSchema = undefined;
 
-        datas.nodes.forEach(node => { node.hidden = !!hide });
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        structure.nodes.forEach(node => { node.hidden = !!hide });
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         if (!hide) {
             hiddenSpaces = [];
         } else {
-            hiddenSpaces = Object.keys(getGroups(datas.nodes));
+            hiddenSpaces = Object.keys(getGroups(structure.nodes));
         }
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:all_spaces_show", function () {
-        let group = getGroups(datas.nodes);
+        let group = getGroups(structure.nodes);
         let spacesToShow = [];
         for (let space in group) {
             if (group[space].hidden) {
                 spacesToShow.push(space);
             }
         }
-        datas.nodes.forEach(node => {
+        structure.nodes.forEach(node => {
             if (spacesToShow.includes(node.group)) {
                 node.hidden = false;
             }
         });
         hiddenSpaces = [];
-        hiddenSchemas = _(datas.nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.removeItem(hiddenSpacesLocalKey);
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenSchemas));
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("modal:show_postman_tests", function (show) {
-        structureStore.toggleState("SHOW_MODAL", show);
-        structureStore.notifyChange();
-    })
-
-    structureStore.addAction("modal:show_status_report", function (show) {
-        structureStore.toggleState("SHOW_STATUS_REPORT", show);
-        structureStore.notifyChange();
-    })
-    structureStore.addAction("modal:show_menu", function (show) {
-        structureStore.toggleState("SHOW_MENU", show);
-        structureStore.notifyChange();
-    })
     /**
      * Store public interfaces
      */
@@ -54372,7 +54152,7 @@ class RiotStore {
     });
 
     structureStore.addInterface("getDatas", function () {
-        return datas;
+        return structure;
     });
 
     structureStore.addInterface("getHiddenSchemas", function () {
@@ -54408,40 +54188,24 @@ class RiotStore {
 })();
 
 
-riot.tag2('kg-api-test', '<div class="panel" if="{isActive}"> <div class="container"> <div class="header"> <div class="file-list" id="tab-list"> <div class="{active:currentTab===1}" onclick="{setFile.bind(this, ⁗newman/0001.html⁗, 1)}">1</div> <div class="{active:currentTab===2}" onclick="{setFile.bind(this, ⁗newman/0002.html⁗, 2)}">2</div> </div> <div class="close-btn" onclick="{close}"><i class="fa fa-times"></i></div> </div> <iframe class="iframe" frameborder="0" riot-src="{fileName}"></iframe> </div> </div>', 'kg-api-test,[data-is="kg-api-test"]{ z-index: -1; display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; margin: 0; box-sizing: border-box; box-sizing: border-box; background-color: rgba(255,255,255,0); transition: background-color 0.75s ease-in; } kg-api-test.show,[data-is="kg-api-test"].show{ z-index: 200; background-color: rgba(255,255,255,0.25); } kg-api-test .panel,[data-is="kg-api-test"] .panel{ display: block; position: relative; width: calc(100% - 20px); height: calc(100% - 20px); margin-top: -100%; margin-left: 10px; border: 1px solid lightgray; background-color: #333; color: white; transition: margin-top 0.5s ease-in; } kg-api-test.show .panel,[data-is="kg-api-test"].show .panel{ margin-top: 10px; } kg-api-test .container,[data-is="kg-api-test"] .container{ display:flex; flex-flow:column; position: relative; width: 100%; height: 100%; --header-height: 65px; --sidebar-width: 400px; } kg-api-test .loading-panel,[data-is="kg-api-test"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-api-test .loading-panel.show,[data-is="kg-api-test"] .loading-panel.show{ top: calc(40% - 40px); } kg-api-test .loading-panel .loading-spinner,[data-is="kg-api-test"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-api-test .loading-panel .loading-spinner img,[data-is="kg-api-test"] .loading-panel .loading-spinner img{ -webkit-animation: loading-spinner-rotate 0.5s infinite linear; animation: loading-spinner-rotate 0.5s infinite linear; } kg-api-test .loading-panel .loading-label,[data-is="kg-api-test"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-api-test .error-panel,[data-is="kg-api-test"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-api-test .error-panel.show,[data-is="kg-api-test"] .error-panel.show{ top: calc(40% - 60px); } kg-api-test .error-panel .error-message,[data-is="kg-api-test"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-api-test .error-panel .error-navigation,[data-is="kg-api-test"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-api-test .error-panel button,[data-is="kg-api-test"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-api-test .error-panel button:hover,[data-is="kg-api-test"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; } kg-api-test .iframe,[data-is="kg-api-test"] .iframe{ flex: 1 1 auto; } kg-api-test .header,[data-is="kg-api-test"] .header{ height:50px; color:white; display:flex; align-items:center; justify-content:space-between; } kg-api-test .close-btn,[data-is="kg-api-test"] .close-btn{ margin-right:10px; } kg-api-test .file-list,[data-is="kg-api-test"] .file-list{ display:flex; align-items:center; margin-left:10px; } kg-api-test .file-list>div,[data-is="kg-api-test"] .file-list>div{ width:50px; height:20px; background-color:#3e3e3e; border-radius:2px; margin-right:10px; text-align:center; cursor:pointer; } kg-api-test .file-list>div:hover,[data-is="kg-api-test"] .file-list>div:hover{ background-color:#9898ad; } kg-api-test .file-list>div.active,[data-is="kg-api-test"] .file-list>div.active{ background-color:#6969dc; }', 'class="{show: isActive}"', function(opts) {
-        this.isActive = false;
-        this.fileName = "newman/0001.html";
-        this.currentTab = 1;
+riot.tag2('kg-app', '<div class="kg-app-container "> <kg-topbar></kg-topbar> <kg-body></kg-body> <kg-hide-panel></kg-hide-panel> <kg-hide-spaces-panel></kg-hide-spaces-panel> <kg-search-panel></kg-search-panel> <kg-sidebar></kg-sidebar> <div class="loading-panel {show: isLoading}"> <span class="loading-spinner"> <img src="img/ebrains.svg" alt="loading..."> </span> <span class="loading-label">Loading structure</span> </div> <div class="error-panel {show: hasError}"> <span class="error-message">The service is temporary unavailable. Please retry in a moment.</span> <div class="error-navigation"> <button onclick="{retry}">Retry</button> </div> </div> </div>', 'kg-app,[data-is="kg-app"]{ display:block; width:100vw; height:100vh; --topbar-height: 80px; --sidebar-width: 400px; --search-panel-width: 300px; position:absolute; top:0; left:0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; } kg-app input,[data-is="kg-app"] input,kg-app button,[data-is="kg-app"] button{ -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; } kg-app button *,[data-is="kg-app"] button *{ cursor: pointer; } kg-app button[disabled] *,[data-is="kg-app"] button[disabled] *{ cursor: default; } kg-app a,[data-is="kg-app"] a{ color:white; } kg-app a:hover,[data-is="kg-app"] a:hover{ color:#aaa; } kg-app kg-topbar,[data-is="kg-app"] kg-topbar{ position:absolute; top:0; left:0; width:100vw; height:var(--topbar-height); width:100vw; background-color:#222; } kg-app kg-body,[data-is="kg-app"] kg-body{ position:absolute; width:calc(100vw - var(--sidebar-width)); height:calc(100vh - var(--topbar-height)); background:#333; top:var(--topbar-height); left:0; } kg-app kg-sidebar,[data-is="kg-app"] kg-sidebar{ position:absolute; width:var(--sidebar-width); height:calc(100vh - var(--topbar-height)); background:#111; top:var(--topbar-height); right:0; overflow-y: auto; z-index:20; } kg-app kg-search-panel,[data-is="kg-app"] kg-search-panel,kg-app kg-hide-panel,[data-is="kg-app"] kg-hide-panel,kg-app kg-hide-spaces-panel,[data-is="kg-app"] kg-hide-spaces-panel{ position:absolute; width:var(--search-panel-width); height:calc(100vh - var(--topbar-height) - 50px); background:#222; top:calc(var(--topbar-height) + 25px); right:calc(var(--sidebar-width) - var(--search-panel-width)); overflow:visible; border-radius: 10px 0 0 10px; transition:right 0.5s cubic-bezier(.34,1.06,.63,.93); } kg-app .kg-app-container,[data-is="kg-app"] .kg-app-container{ position:relative; width:100vw; height:100vh; transition:transform 0.7s cubic-bezier(0.77, -0.46, 0.35, 1.66); z-index:2; } kg-app kg-menu-popup,[data-is="kg-app"] kg-menu-popup{ position:absolute; z-index:1; top:0; right:0; height:100vh; width:200px; } kg-app .loading-panel,[data-is="kg-app"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-app .loading-panel.show,[data-is="kg-app"] .loading-panel.show{ top: calc(40% - 40px); } kg-app .loading-panel .loading-spinner,[data-is="kg-app"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-app .loading-panel .loading-spinner img,[data-is="kg-app"] .loading-panel .loading-spinner img{ -webkit-animation: loading-spinner-rotate 0.5s infinite linear; animation: loading-spinner-rotate 0.5s infinite linear; } kg-app .loading-panel .loading-label,[data-is="kg-app"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-app .error-panel,[data-is="kg-app"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-app .error-panel.show,[data-is="kg-app"] .error-panel.show{ top: calc(40% - 60px); } kg-app .error-panel .error-message,[data-is="kg-app"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-app .error-panel .error-navigation,[data-is="kg-app"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-app .error-panel button,[data-is="kg-app"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-app .error-panel button:hover,[data-is="kg-app"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
+        this.hasError = false;
+        this.isLoading = false;
+        this.isLoaded = false;
+
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            RiotPolice.trigger("structure:load");
         });
-
-        this.setFile = function(name,currentTab, event){
-            this.fileName = name;
-            this.currentTab = currentTab;
-        }
 
         this.on("update", function () {
-            this.isActive = this.stores.structure.is("SHOW_MODAL")
-        });
-        this.close = function(){
-            RiotPolice.trigger("modal:show_postman_tests", false)
-        }
-        this.cancel = e => RiotPolice.trigger("api-test:close");
-
-});
-
-riot.tag2('kg-app', '<div class="kg-app-container {menu-open:showMenu}"> <kg-topbar></kg-topbar> <kg-body></kg-body> <kg-hide-panel></kg-hide-panel> <kg-hide-spaces-panel></kg-hide-spaces-panel> <kg-search-panel></kg-search-panel> <kg-sidebar></kg-sidebar> <kg-instances></kg-instances> <kg-api-test></kg-api-test> <kg-status-report></kg-status-report> </div> <kg-menu-popup></kg-menu-popup>', 'kg-app,[data-is="kg-app"]{ display:block; width:100vw; height:100vh; --topbar-height: 80px; --sidebar-width: 400px; --search-panel-width: 300px; position:absolute; top:0; left:0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; } kg-app input,[data-is="kg-app"] input,kg-app button,[data-is="kg-app"] button{ -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; } kg-app button *,[data-is="kg-app"] button *{ cursor: pointer; } kg-app button[disabled] *,[data-is="kg-app"] button[disabled] *{ cursor: default; } kg-app a,[data-is="kg-app"] a{ color:white; } kg-app a:hover,[data-is="kg-app"] a:hover{ color:#aaa; } kg-app kg-topbar,[data-is="kg-app"] kg-topbar{ position:absolute; top:0; left:0; width:100vw; height:var(--topbar-height); width:100vw; background-color:#222; } kg-app kg-body,[data-is="kg-app"] kg-body{ position:absolute; width:calc(100vw - var(--sidebar-width)); height:calc(100vh - var(--topbar-height)); background:#333; top:var(--topbar-height); left:0; } kg-app kg-sidebar,[data-is="kg-app"] kg-sidebar{ position:absolute; width:var(--sidebar-width); height:calc(100vh - var(--topbar-height)); background:#111; top:var(--topbar-height); right:0; overflow-y: auto; z-index:20; } kg-app kg-search-panel,[data-is="kg-app"] kg-search-panel,kg-app kg-hide-panel,[data-is="kg-app"] kg-hide-panel,kg-app kg-hide-spaces-panel,[data-is="kg-app"] kg-hide-spaces-panel{ position:absolute; width:var(--search-panel-width); height:calc(100vh - var(--topbar-height) - 50px); background:#222; top:calc(var(--topbar-height) + 25px); right:calc(var(--sidebar-width) - var(--search-panel-width)); overflow:visible; border-radius: 10px 0 0 10px; transition:right 0.5s cubic-bezier(.34,1.06,.63,.93); } kg-app .menu-open,[data-is="kg-app"] .menu-open{ transform:translateX(-200px); } kg-app .kg-app-container,[data-is="kg-app"] .kg-app-container{ position:relative; width:100vw; height:100vh; transition:transform 0.7s cubic-bezier(0.77, -0.46, 0.35, 1.66); z-index:2; } kg-app kg-menu-popup,[data-is="kg-app"] kg-menu-popup{ position:absolute; z-index:1; top:0; right:0; height:100vh; width:200px; }', '', function(opts) {
-        this.showMenu = false;
-
-        this.on("mount", function () {
-            RiotPolice.on("showmenu", this.update);
+            this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
+            this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
+            this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
         });
 
-        this.on("update", function(){
-            this.showMenu = !this.showMenu;
-        })
+        this.retry = e => RiotPolice.trigger("structure:load");
 });
 
 riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegraph" ref="svg"></svg> <div class="actions"> <button class="control-button zoom-in" onclick="{zoomIn}"> <i class="fa fa-plus" aria-hidden="true"></i> </button> <button class="control-button zoom-out" onclick="{zoomOut}"> <i class="fa fa-minus" aria-hidden="true"></i> </button> <button class="control-button reset-view" onclick="{resetView}"> <i class="fa fa-dot-circle-o" aria-hidden="true"></i> </button> <button class="control-button regroup" onclick="{regroup}"> <i class="fa fa-compress" aria-hidden="true"></i> </button> <button class="control-button degroup" onclick="{degroup}"> <i class="fa fa-expand" aria-hidden="true"></i> </button> <button class="control-button capture" onclick="{capture}"> <i class="fa fa-camera" aria-hidden="true"></i> </button> </div>', 'kg-body,[data-is="kg-body"]{ display: block; } kg-body .nodegraph,[data-is="kg-body"] .nodegraph{ width: calc(100vw - var(--sidebar-width)); height: calc(100vh - var(--topbar-height)); cursor: all-scroll; font-size: 10px; } kg-body .nodegraph text,[data-is="kg-body"] .nodegraph text{ pointer-events: none; } kg-body .link-line,[data-is="kg-body"] .link-line{ fill: none; stroke: #3498db; transition: stroke 0.5s ease-out, fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out; } kg-body .link-line.provenance,[data-is="kg-body"] .link-line.provenance{ stroke-dasharray: 3; stroke: rgba(255, 245, 162, 0.5); } kg-body .link-node__text,[data-is="kg-body"] .link-node__text{ font-size: 9px; fill: #333; transition: fill-opacity 0.5s ease-out; } kg-body .link-node__circle,[data-is="kg-body"] .link-node__circle{ fill: #ecf0f1; stroke: #bdc3c7; transition: fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out; } kg-body .link-node__circle.provenance,[data-is="kg-body"] .link-node__circle.provenance{ fill: #fff5a2; } kg-body .node__circle,[data-is="kg-body"] .node__circle{ stroke: #5ab1eb; fill: #1d6392; stroke-width: 1.5px; cursor: pointer; transition: stroke 0.5s ease-out, fill 0.5s ease-out, fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out; } kg-body .node__nb-instance,[data-is="kg-body"] .node__nb-instance{ font-size: 12px; fill: white; font-weight: bold; transition: fill-opacity 0.5s ease-out; } kg-body .node__label,[data-is="kg-body"] .node__label{ fill: #fff; font-size: 7px; transition: fill-opacity 0.5s ease-out; } kg-body .dephased,[data-is="kg-body"] .dephased{ stroke-opacity: 0.1; fill-opacity: 0.1; } kg-body .selectedRelation,[data-is="kg-body"] .selectedRelation{ stroke: #2ecc71; } kg-body .selectedRelation circle,[data-is="kg-body"] .selectedRelation circle{ stroke: #2ecc71; } kg-body .selectedRelation line,[data-is="kg-body"] .selectedRelation line{ stroke: #2ecc71; } kg-body .selectedNode circle,[data-is="kg-body"] .selectedNode circle{ fill: #27ae60; stroke: #2ecc71; } kg-body .searchResult circle,[data-is="kg-body"] .searchResult circle{ stroke: #8e44ad; fill: #9b59b6; } kg-body .highlightedRelation,[data-is="kg-body"] .highlightedRelation{ stroke: #f1c40f; } kg-body .highlightedRelation circle,[data-is="kg-body"] .highlightedRelation circle{ stroke: #f1c40f; } kg-body .highlightedRelation line,[data-is="kg-body"] .highlightedRelation line{ stroke: #f1c40f; } kg-body .highlightedNode circle,[data-is="kg-body"] .highlightedNode circle{ fill: #f39c12; stroke: #f1c40f; } kg-body text,[data-is="kg-body"] text{ stroke: none !important; font-family: "Montserrat", sans-serif; } kg-body .actions,[data-is="kg-body"] .actions{ position: absolute; left: 20px; bottom: 20px; } kg-body .actions button,[data-is="kg-body"] .actions button{ display: block; width: 40px; height: 40px; line-height: 40px; background: rgba(16, 16, 16, 0.5); appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; transition: all 0.5s ease-out; cursor: pointer; border-bottom: 1px solid #333; } kg-body .actions button:hover,[data-is="kg-body"] .actions button:hover{ color: white; background: #111; } kg-body .actions button:first-child,[data-is="kg-body"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-body .actions button:last-child,[data-is="kg-body"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom: none; } kg-body .hull,[data-is="kg-body"] .hull{ fill: steelblue; stroke: steelblue; fill-opacity: 0.3; stroke-opacity: 0.3; stroke-width: 10px; stroke-linejoin: round; } kg-body .hull_container,[data-is="kg-body"] .hull_container{ width:100%; height:100%; } kg-body .hull_name,[data-is="kg-body"] .hull_name{ position: absolute; top: 20px; left: 20px; color: white; }', '', function(opts) {
@@ -54475,7 +54239,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
         });
 
         this.on("update", () => {
-            if (!this.stores.structure.is("DATAS_LOADED")) {
+            if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
             var self = this;
@@ -55186,125 +54950,6 @@ riot.tag2('kg-instance-property', '', 'kg-instance-property,[data-is="kg-instanc
 
 });
 
-riot.tag2('kg-instances-body', '<table if="{isComparison}"> <cols> <col width="20%"> <col width="40%"> <col width="40%"> </cols> <thead> <tr> <th>Properties \\ Instances</th> <th if="{comparison.instance1}" title="{comparison.instance1.title}"><a href="{comparison.instance1.resultId}" target="_blank">{comparison.instance1.name?comparison.instance1.name:comparison.instance1.resultId}</a></th> <th if="{comparison.instance2}" title="{comparison.instance2.title}"><a href="{comparison.instance2.resultId}" target="_blank">{comparison.instance2.name?comparison.instance2.name:comparison.instance2.resultId}</a></th> </tr> </thead> <tbody> <tr each="{property in comparison.properties}"> <td title="{property.name}">{property.shortName}</td> <td if="{comparison.instance1}"><kg-instance-property if="{property.instance1}" content="{property.instance1}"></kg-instance-property></td> <td if="{comparison.instance2}"><kg-instance-property if="{property.instance2}" content="{property.instance2}"></kg-instance-property></td> </tr> </tbody> </table>', 'kg-instances-body,[data-is="kg-instances-body"]{ background:#333; overflow-y: auto; } kg-instances-body table,[data-is="kg-instances-body"] table{ margin: 10px; border-spacing: 0; border-collapse: separate; } kg-instances-body table thead th,[data-is="kg-instances-body"] table thead th{ padding: 10px; border-bottom: 1px solid gray; border-right: 1px solid gray; text-align: right; } kg-instances-body table thead th:first-child,[data-is="kg-instances-body"] table thead th:first-child{ white-space: nowrap; } kg-instances-body table thead th:not(:first-child),[data-is="kg-instances-body"] table thead th:not(:first-child){ cursor: default; border-top: 1px solid gray; word-break: break-all; text-align: left; } kg-instances-body table thead th:last-child,[data-is="kg-instances-body"] table thead th:last-child{ text-align: left !important; } kg-instances-body table tbody td,[data-is="kg-instances-body"] table tbody td{ padding: 10px; border-bottom: 1px solid gray; border-right: 1px solid gray; text-align: left; } kg-instances-body table tbody td:last-child,[data-is="kg-instances-body"] table tbody td:last-child{ text-align: left !important; } kg-instances-body table tbody td:first-child,[data-is="kg-instances-body"] table tbody td:first-child{ cursor: default; white-space: nowrap; text-align: right; } kg-instances-body table tbody td:not(:first-child),[data-is="kg-instances-body"] table tbody td:not(:first-child){ word-break: break-all; vertical-align: top; }', '', function(opts) {
-        this.isComparison = false;
-        this.comparison = null;
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("instances", this);
-        });
-
-        this.on("update", function () {
-            this.isComparison = this.stores.instances.is("COMPARISON");
-            const isLoading = this.stores.instances.is("QUERY_LOADING");
-            if (!isLoading || this.comparison === null) {
-                if (this.isComparison)
-                    this.comparison = this.stores.instances.getComparison();
-                else
-                    this.comparison = null;
-            }
-        });
-});
-
-riot.tag2('kg-instances-sidebar', '<ul> <li each="{instance in instances}" title="{instance.title}"><button onclick="{selectInstance}">{instance.name}</button</li> </ul>', 'kg-instances-sidebar,[data-is="kg-instances-sidebar"]{ background:#111; overflow-y: auto; } kg-instances-sidebar li,[data-is="kg-instances-sidebar"] li{ padding: 4px 0; } kg-instances-sidebar button,[data-is="kg-instances-sidebar"] button{ margin: 0; padding: 0; border: 0; background-color: transparent; font-size: 0.9em; text-decoration: underline; color: #d9d9d9; cursor: pointer; word-break: break-all; } kg-instances-sidebar button:hover,[data-is="kg-instances-sidebar"] button:hover{ color: white; }', '', function(opts) {
-        this.instances = [];
-        this.isActive = false;
-        this.isLoaded = false;
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("instances", this);
-        });
-
-        this.on("update", function () {
-
-            this.isActive = this.stores.instances.is("ACTIVE");
-            this.isLoaded = this.stores.instances.is("QUERY_LOADED");
-            const isLoading = this.stores.instances.is("QUERY_LOADING");
-
-            if (!isLoading) {
-                if (this.isActive && this.isLoaded)
-                    this.instances = this.stores.instances.getQueryResults();
-                else
-                    this.instances = [];
-            }
-        });
-
-        this.selectInstance = e => {
-            RiotPolice.trigger("instances:select4comparison", e.item.instance);
-        }
-});
-
-riot.tag2('kg-instances-topbar', '<h2 if="{isActive}" title="{schema.id}">{schema.label}</h2> <button class="close" onclick="{close}"><i class="fa fa-close"></i></button>', 'kg-instances-topbar,[data-is="kg-instances-topbar"]{ background-color:#222; } kg-instances-topbar h2,[data-is="kg-instances-topbar"] h2{ margin-left: 20px; } kg-instances-topbar button.close,[data-is="kg-instances-topbar"] button.close{ position: absolute; top: 6px; right: 6px; width: 50px; height: 50px; border: 0; margin: 0; background-color: transparent; color: #93999f; font-size: 20px; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; z-index: 500; cursor: pointer; } kg-instances-topbar button.close:hover,[data-is="kg-instances-topbar"] button.close:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; } kg-instances-topbar button.close:after,[data-is="kg-instances-topbar"] button.close:after{ display: none; content: "esc"; position: absolute; transform: translate(-16px, 14px); font-size: 12px; color: #93999f; }', '', function(opts) {
-        this.schema = null;
-        this.isActive = false;
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("instances", this);
-        });
-
-        this.on("update", function () {
-            this.isActive = this.stores.instances.is("ACTIVE");
-            const isLoading = this.stores.instances.is("QUERY_LOADING");
-
-            if (!isLoading || this.schema === null) {
-                if (this.isActive)
-                    this.schema = this.stores.instances.getQuerySchema();
-                else
-                    this.schema = null;
-            }
-        });
-
-        this.close = e => RiotPolice.trigger("instances:close");
-
-});
-
-riot.tag2('kg-instances', '<div class="panel"> <div class="container" if="{isActive}"> <kg-instances-topbar></kg-instances-topbar> <kg-instances-sidebar></kg-instances-sidebar> <kg-instances-body></kg-instances-body> </div> <div class="loading-panel {show: isLoading}"> <span class="loading-spinner"> <img src="img/ebrains.svg" alt="loading..."> </span> <span class="loading-label">Loading instances ( {loadingStats.current} / {loadingStats.total} )</span> </div> <div class="error-panel {show: hasError}"> <span class="error-message">The search engine is temporary unavailable. Please retry in a moment.</span> <div class="error-navigation"> <button onclick="{retry}">Retry</button> <button onclick="{cancel}">Cancel</button> </div> </div> </div>', 'kg-instances,[data-is="kg-instances"]{ z-index: -1; display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; margin: 0; box-sizing: border-box; box-sizing: border-box; background-color: rgba(255,255,255,0); transition: background-color 0.75s ease-in; } kg-instances.show,[data-is="kg-instances"].show{ z-index: 200; background-color: rgba(255,255,255,0.25); } kg-instances .panel,[data-is="kg-instances"] .panel{ display: block; position: relative; width: calc(100% - 20px); height: calc(100% - 20px); margin-top: -100%; margin-left: 10px; border: 1px solid lightgray; background-color: #333; color: white; transition: margin-top 0.5s ease-in; } kg-instances.show .panel,[data-is="kg-instances"].show .panel{ margin-top: 10px; } kg-instances .container,[data-is="kg-instances"] .container{ position: relative; width: 100%; height: 100%; --header-height: 65px; --sidebar-width: 400px; } kg-instances-topbar { position:absolute; top:0; left:0; width:100%; height:var(--header-height); } kg-instances-sidebar { position:absolute; top:var(--header-height); left:0; width:var(--sidebar-width); height:calc(100% - var(--header-height)); } kg-instances-body { position:absolute; top:var(--header-height); left:var(--sidebar-width); width:calc(100% - var(--sidebar-width)); height:calc(100% - var(--header-height)); } kg-instances .loading-panel,[data-is="kg-instances"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-instances .loading-panel.show,[data-is="kg-instances"] .loading-panel.show{ top: calc(40% - 40px); } kg-instances .loading-panel .loading-spinner,[data-is="kg-instances"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-instances .loading-panel .loading-spinner img,[data-is="kg-instances"] .loading-panel .loading-spinner img{ -webkit-animation: loading-spinner-rotate 0.5s infinite linear; animation: loading-spinner-rotate 0.5s infinite linear; } kg-instances .loading-panel .loading-label,[data-is="kg-instances"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-instances .error-panel,[data-is="kg-instances"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-instances .error-panel.show,[data-is="kg-instances"] .error-panel.show{ top: calc(40% - 60px); } kg-instances .error-panel .error-message,[data-is="kg-instances"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-instances .error-panel .error-navigation,[data-is="kg-instances"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-instances .error-panel button,[data-is="kg-instances"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-instances .error-panel button:hover,[data-is="kg-instances"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', 'class="{show: isActive}"', function(opts) {
-        this.isActive = false;
-        this.hasError = false;
-        this.isLoading = false;
-        this.isLoaded = false;
-        this.loadingStats = { current: 0, percentage: 100, total: 0 };
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("instances", this);
-            RiotPolice.on("instances.changed", this.update);
-        });
-
-        this.on("update", function () {
-            this.isActive = this.stores.instances.is("ACTIVE");
-            this.hasError = this.stores.instances.is("QUERY_ERROR");
-            this.isLoading = this.stores.instances.is("QUERY_LOADING");
-            this.isLoaded = this.stores.instances.is("QUERY_LOADED");
-
-            if (this.isLoading)
-                this.loadingStats = this.stores.instances.getLoadingStats();
-        });
-
-        this.retry = e => RiotPolice.trigger("instances:retry");
-        this.cancel = e => RiotPolice.trigger("instances:close");
-
-});
-
-riot.tag2('kg-menu-popup', '<div class="container"> <div class="grid"> <div class="col"> <div onclick="{toggleModal.bind(this, ⁗modal:show_postman_tests⁗, showPostman)}"><i class="fa fa-rocket"></i></div> <div onclick="{toggleModal.bind(this, ⁗modal:show_status_report⁗, showStatus)}"><i class="fa fa-bolt"></i></div> </div> </div> </div>', 'kg-menu-popup,[data-is="kg-menu-popup"]{ display:block; } kg-menu-popup .grid,[data-is="kg-menu-popup"] .grid{ display:flex; } kg-menu-popup .col,[data-is="kg-menu-popup"] .col{ flex:1; } kg-menu-popup .col>div,[data-is="kg-menu-popup"] .col>div{ color:white; width:50px; height:50px; border-radius:2px; display:flex; align-items: center; justify-content: center; background-color:#4b4b4d; margin: 5px; } kg-menu-popup .col>div:hover,[data-is="kg-menu-popup"] .col>div:hover{ color:#3498db; background-color:#5c5c5c; } kg-menu-popup .container,[data-is="kg-menu-popup"] .container{ position: absolute; padding: 50px 10px 10px 20px; right: 0px; width:200px; background-color: #3e3e3e; cursor: pointer; height: 100%; }', '', function(opts) {
-        this.showPostman = false;
-        this.showStatus = false;
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("structure", this);
-            RiotPolice.on("structure.changed", this.update);
-        });
-
-        this.toggleModal = function(action, showModal){
-            showModal = !showModal;
-            RiotPolice.trigger(action, showModal);
-            RiotPolice.trigger("showmenu", false);
-        }
-
-        this.on("update", function () {
-            this.isActive = this.stores.structure.is("SHOW_MENU");
-        });
-});
-
 riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"> <i class="fa fa-search" aria-hidden="true"></i> </button> <input type="text" class="searchbox" ref="query" onkeyup="{doSearch}"> <div class="results" if="{results.length > 0}"> <div class="title"> Results </div> <ul> <li each="{result in results}"> <a class="{⁗disabled⁗: hiddenSchemas.indexOf(result.id) !== -1}" href="#" onclick="{selectResult}" onmouseover="{highlightSchema}" onmouseout="{unhighlightSchema}">{result.id}</a> <span class="numberOfInstances">{result.numberOfInstances}</span> </li> </ul> </div> <div class="no-results" if="{!results.length && !!query}"> Nothing found </div>', 'kg-search-panel.open,[data-is="kg-search-panel"].open{ right: var(--sidebar-width); z-index:10; } kg-search-panel,[data-is="kg-search-panel"]{ padding: 15px 15px; color:white; } kg-search-panel button.open-panel,[data-is="kg-search-panel"] button.open-panel{ position: absolute; top: 10px; left: -40px; width: 40px; height: 40px; line-height: 40px; background: #222; border-radius: 10px 0 0 10px; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; } kg-search-panel .searchbox,[data-is="kg-search-panel"] .searchbox{ appearance: none; -webkit-appearance: none; width: 100%; padding: 0 8px; background: #333; border: #ccc; outline: none; border-radius: 5px; height: 30px; line-height: 30px; color: white; font-size: 16px; } kg-search-panel .results,[data-is="kg-search-panel"] .results{ margin-top: 15px; max-height:calc(100% - 45px); overflow-y:auto; } kg-search-panel ul,[data-is="kg-search-panel"] ul{ font-size: 0.8em; padding-left: 0; list-style: none; } kg-search-panel li,[data-is="kg-search-panel"] li{ padding: 3px 0; line-height: 1; } kg-search-panel .numberOfInstances,[data-is="kg-search-panel"] .numberOfInstances{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-search-panel .no-results,[data-is="kg-search-panel"] .no-results{ font-size:1.1em; font-style:italic; margin-top:15px; } kg-search-panel .disabled,[data-is="kg-search-panel"] .disabled{ text-decoration: line-through; color:#aaa; }', '', function(opts) {
         this.query = "";
         this.results = [];
@@ -55360,13 +55005,11 @@ riot.tag2('kg-sidebar', '<div if="{schemaSelected}" class="{separator: schemaSel
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
-            RiotPolice.requestStore("instances", this);
             RiotPolice.on("structure.changed", this.update);
         });
 
         this.on("unmount", function(){
             RiotPolice.off("structure.changed", this.update);
-            RiotPolice.releaseStore("instances", this);
             RiotPolice.releaseStore("structure", this);
         });
 
@@ -55435,29 +55078,7 @@ riot.tag2('kg-sidebar', '<div if="{schemaSelected}" class="{separator: schemaSel
         }
 });
 
-riot.tag2('kg-status-report', '<div class="panel" if="{isActive}"> <div class="container"> <div class="header"> <div>Status</div> <div class="close-btn" onclick="{close}"><i class="fa fa-times"></i></div> </div> </div> </div>', 'kg-status-report,[data-is="kg-status-report"]{ z-index: -1; display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; margin: 0; box-sizing: border-box; box-sizing: border-box; background-color: rgba(255,255,255,0); transition: background-color 0.75s ease-in; } kg-status-report.show,[data-is="kg-status-report"].show{ z-index: 200; background-color: rgba(255,255,255,0.25); } kg-status-report .panel,[data-is="kg-status-report"] .panel{ display: block; position: relative; width: calc(100% - 20px); height: calc(100% - 20px); margin-top: -100%; margin-left: 10px; border: 1px solid lightgray; background-color: #333; color: white; transition: margin-top 0.5s ease-in; } kg-status-report.show .panel,[data-is="kg-status-report"].show .panel{ margin-top: 10px; } kg-status-report .container,[data-is="kg-status-report"] .container{ display:flex; flex-flow:column; position: relative; width: 100%; height: 100%; --header-height: 65px; --sidebar-width: 400px; } kg-status-report .loading-panel,[data-is="kg-status-report"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-status-report .loading-panel.show,[data-is="kg-status-report"] .loading-panel.show{ top: calc(40% - 40px); } kg-status-report .loading-panel .loading-spinner,[data-is="kg-status-report"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-status-report .loading-panel .loading-spinner img,[data-is="kg-status-report"] .loading-panel .loading-spinner img{ -webkit-animation: loading-spinner-rotate 0.5s infinite linear; animation: loading-spinner-rotate 0.5s infinite linear; } kg-status-report .loading-panel .loading-label,[data-is="kg-status-report"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-status-report .error-panel,[data-is="kg-status-report"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-status-report .error-panel.show,[data-is="kg-status-report"] .error-panel.show{ top: calc(40% - 60px); } kg-status-report .error-panel .error-message,[data-is="kg-status-report"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-status-report .error-panel .error-navigation,[data-is="kg-status-report"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-status-report .error-panel button,[data-is="kg-status-report"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-status-report .error-panel button:hover,[data-is="kg-status-report"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; } kg-status-report .iframe,[data-is="kg-status-report"] .iframe{ flex: 1 1 auto; } kg-status-report .header,[data-is="kg-status-report"] .header{ height:50px; color:white; display:flex; align-items:center; justify-content:space-between; } kg-status-report .close-btn,[data-is="kg-status-report"] .close-btn{ margin-right:10px; } kg-status-report .file-list,[data-is="kg-status-report"] .file-list{ display:flex; align-items:center; margin-left:10px; } kg-status-report .file-list>div,[data-is="kg-status-report"] .file-list>div{ width:50px; height:20px; background-color:#3e3e3e; border-radius:2px; margin-right:10px; text-align:center; cursor:pointer; } kg-status-report .file-list>div:hover,[data-is="kg-status-report"] .file-list>div:hover{ background-color:#9898ad; } kg-status-report .file-list>div.active,[data-is="kg-status-report"] .file-list>div.active{ background-color:#6969dc; } kg-status-report .header,[data-is="kg-status-report"] .header{ height:50px; color:white; display:flex; align-items:center; justify-content:space-between; } kg-status-report .close-btn,[data-is="kg-status-report"] .close-btn{ margin-right:10px; } kg-status-report .DOWN,[data-is="kg-status-report"] .DOWN{ color:#e91313; } kg-status-report .OK,[data-is="kg-status-report"] .OK{ color:#00d22f; } kg-status-report .service,[data-is="kg-status-report"] .service{ display:flex; align-items:center; } kg-status-report .service>div,[data-is="kg-status-report"] .service>div{ width:150px; }', 'class="{show: isActive}"', function(opts) {
-        this.isActive = false;
-        this.fileName = "newman/0001.html";
-        this.currentTab = 1;
-        this.eventManager = riot.observable();
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("structure", this);
-            RiotPolice.on("structure.changed", this.update);
-        });
-        let self = this;
-
-        this.on("update", function () {
-            this.isActive = this.stores.structure.is("SHOW_STATUS_REPORT");
-        });
-        this.close = function(){
-            RiotPolice.trigger("modal:show_status_report", false)
-        }
-        this.cancel = e => RiotPolice.trigger("api-test:close");
-
-});
-
-riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <div class="header-right"> <div class="date" if="{date}">KG State at : {date}</div> <div class="menu" onclick="{toggleModal}"><div class="menu-btn"><i class="fa fa-bars"></i></div></div> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); }', '', function(opts) {
+riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <div class="header-right"> <div class="date" if="{date}">KG State at : {date}</div> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); }', '', function(opts) {
         this.date = "";
         this.showModal = false;
 
@@ -55465,13 +55086,8 @@ riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src=
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
-        this.toggleModal = function(){
-            this.showModal = !this.showModal;
-            RiotPolice.trigger("showmenu", this.showModal);
-
-        }
         this.on("update", function(){
-            if(this.stores.structure.is("DATAS_LOADED")){
+            if(this.stores.structure.is("STRUCTURE_LOADED")){
                 this.date = new Date(this.stores.structure.getDatas().lastUpdate);
             }
         });

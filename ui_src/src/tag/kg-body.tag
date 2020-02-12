@@ -244,7 +244,7 @@
         });
 
         this.on("update", () => {
-            if (!this.stores.structure.is("DATAS_LOADED")) {
+            if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
             var self = this;
