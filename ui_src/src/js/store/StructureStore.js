@@ -29,6 +29,7 @@
     ];
     const hiddenSpacesLocalKey = "hiddenSpaces";
     const hiddenNodesLocalKey = "hiddenNodes";
+
     const getGroups = (nodes) => {
         var map = nodes.reduce((map, node) => {
             let i = map[node.group] || {};
@@ -125,13 +126,30 @@
         structureStore.toggleState("DATAS_LOADING", false);
         structureStore.notifyChange();
     }
+
+    const simplifySemantics = data => {
+        const result = {
+            nodes: [],
+            links: [],
+            schemas: {}
+        };
+        result.nodes = data.data.map(type => ({
+            numberOfInstances:  type["https://kg.ebrains.eu/vocab/meta/spaces"].reduce((acc, space) => acc += space["https://kg.ebrains.eu/vocab/meta/occurrences"], 0), 
+            group: type["https://kg.ebrains.eu/vocab/meta/spaces"].length && type["https://kg.ebrains.eu/vocab/meta/spaces"][0]["http://schema.org/name"],
+            schema: type["http://schema.org/identifier"], 
+            id: type["http://schema.org/identifier"],
+            label: type["http://schema.org/name"]
+        }));
+        return result;
+      };
+
     var retrigger = true;
     const init = function () {
         if (!datas && !structureStore.is("DATAS_LOADING")) {
             structureStore.toggleState("DATAS_LOADING", true);
-            $.get(window.location.protocol + "//" + window.location.host + "/statistics/data/structure.json", function (response) {
-                datas = response;
-                if (datas) {
+            $.get(`${window.location.protocol}//${window.location.host}/api/types?stage=LIVE&withProperties=false`, function (response) {
+                if (response) {
+                    datas = simplifySemantics(response)
                     loadData(datas);
                 } else {
                     structureStore.toggleState("DATAS_LOADING", false);

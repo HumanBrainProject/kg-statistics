@@ -1,2 +1,0 @@
-sphinx
-hbp_sphinx_theme
