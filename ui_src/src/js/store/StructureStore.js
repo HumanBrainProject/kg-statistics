@@ -43,15 +43,13 @@
         return acc;
     }, {});
 
-    const generateViewData = function() {
+    const generateViewData = function(on) {
+        groupViewMode = !!on;
         if (groupViewMode) {
             generateGroupViewData(structure.groupsMode.nodes, structure.groupsMode.relations);
         } else {
             generateTypeViewData(structure.typesMode.nodes, structure.typesMode.relations);
         }
-        structureStore.toggleState("STRUCTURE_LOADED", true);
-        structureStore.toggleState("STRUCTURE_LOADING", false);
-        structureStore.notifyChange();
     }
 
     const generateGroupViewData = function (nodes, relations) {
@@ -271,12 +269,16 @@
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            $.get(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
-            .done(response => {
-                structure = buildStructure(response);
-                generateViewData();
+            fetch(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
+            .then(response => response.json())
+            .then(data => {
+                structure = buildStructure(data);
+                generateViewData(groupViewMode);
+                structureStore.toggleState("STRUCTURE_LOADED", true);
+                structureStore.toggleState("STRUCTURE_LOADING", false);
+                structureStore.notifyChange();
             })
-            .fail(e => {
+            .catch(e => {
                 structureStore.toggleState("STRUCTURE_ERROR", true);
                 structureStore.toggleState("STRUCTURE_LOADED", false);
                 structureStore.toggleState("STRUCTURE_LOADING", false);
@@ -290,9 +292,10 @@
             structureStore.toggleState("TYPE_LOADING", true);
             structureStore.toggleState("TYPE_ERROR", false);
             structureStore.notifyChange();
-            $.get(`https://kg-dev.humanbrainproject.eu/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
-            .done(response => types = simplifyTypeSemantics(response))
-            .fail(e => {
+            fetch(`https://kg-dev.humanbrainproject.eu/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
+            .then(response => response.json())
+            .then(data => types = simplifyTypeSemantics(data))
+            .catch(e => {
                 structureStore.toggleState("TYPE_ERROR", true);
                 structureStore.toggleState("TYPE_LOADED", false);
                 structureStore.toggleState("TYPE_LOADING", false);
@@ -327,7 +330,7 @@
     [
         "STRUCTURE_LOADING", "STRUCTURE_ERROR",  "STRUCTURE_LOADED",
         "TYPE_SELECTED", "TYPE_HIGHLIGHTED", "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
-        "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
+        "GROUP_VIEW_MODE", "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
     ],
     init, reset);
 
@@ -337,6 +340,13 @@
 
     structureStore.addAction("structure:load", function () {
         loadStructure();
+    });
+
+
+    structureStore.addAction("structure:toggle_group_view_mode", function () {
+        generateViewData(!groupViewMode);
+        structureStore.toggleState("GROUP_VIEW_MODE", groupViewMode);
+        structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:schema_select", function (schema) {

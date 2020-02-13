@@ -53850,15 +53850,13 @@ class RiotStore {
         return acc;
     }, {});
 
-    const generateViewData = function() {
+    const generateViewData = function(on) {
+        groupViewMode = !!on;
         if (groupViewMode) {
             generateGroupViewData(structure.groupsMode.nodes, structure.groupsMode.relations);
         } else {
             generateTypeViewData(structure.typesMode.nodes, structure.typesMode.relations);
         }
-        structureStore.toggleState("STRUCTURE_LOADED", true);
-        structureStore.toggleState("STRUCTURE_LOADING", false);
-        structureStore.notifyChange();
     }
 
     const generateGroupViewData = function (nodes, relations) {
@@ -54078,12 +54076,16 @@ class RiotStore {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            $.get(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
-            .done(response => {
-                structure = buildStructure(response);
-                generateViewData();
+            fetch(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
+            .then(response => response.json())
+            .then(data => {
+                structure = buildStructure(data);
+                generateViewData(groupViewMode);
+                structureStore.toggleState("STRUCTURE_LOADED", true);
+                structureStore.toggleState("STRUCTURE_LOADING", false);
+                structureStore.notifyChange();
             })
-            .fail(e => {
+            .catch(e => {
                 structureStore.toggleState("STRUCTURE_ERROR", true);
                 structureStore.toggleState("STRUCTURE_LOADED", false);
                 structureStore.toggleState("STRUCTURE_LOADING", false);
@@ -54097,9 +54099,10 @@ class RiotStore {
             structureStore.toggleState("TYPE_LOADING", true);
             structureStore.toggleState("TYPE_ERROR", false);
             structureStore.notifyChange();
-            $.get(`https://kg-dev.humanbrainproject.eu/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
-            .done(response => types = simplifyTypeSemantics(response))
-            .fail(e => {
+            fetch(`https://kg-dev.humanbrainproject.eu/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
+            .then(response => response.json())
+            .then(data => types = simplifyTypeSemantics(data))
+            .catch(e => {
                 structureStore.toggleState("TYPE_ERROR", true);
                 structureStore.toggleState("TYPE_LOADED", false);
                 structureStore.toggleState("TYPE_LOADING", false);
@@ -54134,7 +54137,7 @@ class RiotStore {
     [
         "STRUCTURE_LOADING", "STRUCTURE_ERROR",  "STRUCTURE_LOADED",
         "TYPE_SELECTED", "TYPE_HIGHLIGHTED", "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
-        "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
+        "GROUP_VIEW_MODE", "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
     ],
     init, reset);
 
@@ -54144,6 +54147,13 @@ class RiotStore {
 
     structureStore.addAction("structure:load", function () {
         loadStructure();
+    });
+
+
+    structureStore.addAction("structure:toggle_group_view_mode", function () {
+        generateViewData(!groupViewMode);
+        structureStore.toggleState("GROUP_VIEW_MODE", groupViewMode);
+        structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:schema_select", function (schema) {
@@ -55198,6 +55208,19 @@ riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src=
                 this.date = new Date();
             }
         });
+});
+
+riot.tag2('kg-view-mode', '<div classname="kgs-theme_toggle"> <button class="kgs-theme_toggle__button {selected: !groupViewMode}" onclick="{toggle}"> <i class="fa fa-moon-o"></i> </button> <button class="kgs-theme_toggle__button {selected: groupViewMode}" onclick="{toggle}"> <i class="fa fa-sun-o"></i> </button> ))} </div>', 'kg-view-mode,[data-is="kg-view-mode"]{ display:block; } kg-view-mode .title,[data-is="kg-view-mode"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-view-mode .date,[data-is="kg-view-mode"] .date{ height:100%; margin-right:10px; } kg-view-mode .btn,[data-is="kg-view-mode"] .btn{ width:20px; height:20px; } kg-view-mode .menu,[data-is="kg-view-mode"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-view-mode .menu:hover,[data-is="kg-view-mode"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-view-mode .header-left,[data-is="kg-view-mode"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-view-mode .header-right,[data-is="kg-view-mode"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-view-mode .header,[data-is="kg-view-mode"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); }', '', function(opts) {
+        this.groupViewMode = false;
+
+        this.on("mount", function () {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+        });
+        this.on("update", function(){
+            this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
+        });
+        this.toggle = () => RiotPolice.trigger("structure:toggle_group_view_mode");
 });
 /*
 *   Copyright (c) 2018, EPFL/Human Brain Project PCO
