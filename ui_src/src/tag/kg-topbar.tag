@@ -87,7 +87,7 @@
         });
         this.on("update", function(){
             if(this.stores.structure.is("STRUCTURE_LOADED")){
-                this.date = new Date(this.stores.structure.getDatas().lastUpdate);
+                this.date = new Date();
             }
         });
     </script>

@@ -182,7 +182,7 @@
         });
 
         this.on("update", function () {
-            let spacesMap = groupBy(this.stores.structure.getDatas().nodes, (node) => {return node.group});
+            let spacesMap = groupBy(this.stores.structure.getNodes(), (node) => {return node.group});
             this.hiddenSpaces = this.stores.structure.getHiddenSpaces();
             let mapIt = spacesMap[Symbol.iterator]();
             this.spaces = [];

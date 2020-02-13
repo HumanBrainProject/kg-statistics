@@ -220,23 +220,23 @@
 
         this.on("update", function () {
             var self = this;
-            this.datas = this.stores.structure.getDatas();
+            this.nodes = this.stores.structure.getNodes();
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
 
             this.schemasWithoutRelations = [];
-            this.datas.nodes.forEach(n => {
+            this.nodes.forEach(n => {
                 if (!n.hidden && !self.stores.structure.hasRelations(n.id, true)){
                     self.schemasWithoutRelations.push(n);
                 }
             });
 
-            this.schemaSelected = this.stores.structure.is("SCHEMA_SELECTED");
+            this.schemaSelected = this.stores.structure.is("TYPE_SELECTED");
             if(!this.schemaSelected){
                 return;
             }
             this.selectedSchema = this.stores.structure.getSelectedSchema();
 
-            this.sortedProperties = _.orderBy(this.datas.schemas[this.selectedSchema.schema][this.selectedSchema.version].properties, o => o.numberOfInstances, 'desc');
+            this.sortedProperties = [];// _.orderBy(this.datas.schemas[this.selectedSchema.schema][this.selectedSchema.version].properties, o => o.numberOfInstances, 'desc');
             this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedSchema.id), o => o.relationCount, 'desc');
         });
 

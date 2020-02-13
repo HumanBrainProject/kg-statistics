@@ -53822,12 +53822,13 @@ class RiotStore {
 */
 
 (function () {
-    let structure;
+    let structure = null;
+    let groupViewMode = false;
     let hiddenSchemas = [];
     let hiddenSpaces = [];
-    let relations;
-    let selectedSchema;
-    let highlightedSchema;
+    let types = {};
+    let selectedType;
+    let highlightedType;
     let searchQuery = "";
     let searchResults = [];
     let minNodeCounts = 6;
@@ -53837,22 +53838,160 @@ class RiotStore {
     const hiddenSpacesLocalKey = "hiddenSpaces";
     const hiddenNodesLocalKey = "hiddenNodes";
 
-    const getGroups = (nodes) => {
-        var map = nodes.reduce((map, node) => {
-            let i = map[node.group] || {};
-            var arr = i["value"] || [];
-            arr.push(node);
-            let storedHiddenSpaces = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
-            map[node.group] = { value: arr, hidden: storedHiddenSpaces.includes(node.group) };
-            return map;
-        }, {});
-        return map;
+    const getGroups = nodes => nodes.reduce((acc, node) => {
+        const group = acc[node.group] || {};
+        const nodes = group.value || [];
+        nodes.push(node);
+        let storedHiddenSpaces = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
+        acc[node.group] = {
+            value: nodes, 
+            hidden: storedHiddenSpaces.includes(node.group)
+        };
+        return acc;
+    }, {});
+
+    const generateViewData = function() {
+        if (groupViewMode) {
+            generateGroupViewData(structure.groupsMode.nodes, structure.groupsMode.relations);
+        } else {
+            generateTypeViewData(structure.typesMode.nodes, structure.typesMode.relations);
+        }
+        structureStore.toggleState("STRUCTURE_LOADED", true);
+        structureStore.toggleState("STRUCTURE_LOADING", false);
+        structureStore.notifyChange();
     }
 
-    const loadData = function (structure) {
-        relations = {};
-        structure.links.forEach(link => {
-            link.provenance = link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance)
+    const generateGroupViewData = function (nodes, relations) {
+
+        const groups = getGroups(nodes);
+
+        let toBeHidden;
+        //First use
+        if (!localStorage.getItem(hiddenNodesLocalKey)) {
+            toBeHidden = [];
+            //Hidding nodes with too many connections
+            nodes.forEach(node => {
+                node.hidden = false;
+                if (relations[node.id] !== undefined &&
+                    whitelist.indexOf(node.id) < 0 &&
+                    groups[node.group].value.length > minNodeCounts &&
+                    relations[node.id].length / groups[node.group].value.length > AppConfig.structure.autoHideThreshold
+                ) {
+                    toBeHidden.push(node.id);
+                }
+            });
+            localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
+        } else {
+            toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
+        }
+
+        structure.nodes.forEach(node => {
+            node.hidden = false;
+            if (relations[node.id] !== undefined &&
+                whitelist.indexOf(node.id) < 0 &&
+                groups[node.group].hidden ||
+                toBeHidden.includes(node.id)
+            ) {
+                node.hidden = true;
+            }
+        });
+
+        for (item in groups) {
+            if (groups[item].hidden) {
+                hiddenSpaces.push(item);
+            }
+        }
+
+        hiddenSchemas = _(nodes).filter(node => node.hidden).map(node => node.id).value();
+    }
+
+    const generateTypeViewData = function (nodes, relations) {
+
+        let toBeHidden;
+        //First use
+        if (!localStorage.getItem(hiddenNodesLocalKey)) {
+            toBeHidden = [];
+            //Hidding nodes with too many connections
+            nodes.forEach(node => {
+                node.hidden = false;
+                if (relations[node.id] !== undefined &&
+                    whitelist.indexOf(node.id) < 0 &&
+                    relations[node.id].length / structure.nodes.length > AppConfig.structure.autoHideThreshold
+                ) {
+                    toBeHidden.push(node.id);
+                }
+            });
+            localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
+        } else {
+            toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
+        }
+
+        nodes.forEach(node => {
+            node.hidden = false;
+            if (relations[node.id] !== undefined &&
+                whitelist.indexOf(node.id) < 0 &&
+                toBeHidden.includes(node.id)
+            ) {
+                node.hidden = true;
+            }
+        });
+
+        hiddenSchemas = _(nodes).filter(node => node.hidden).map(node => node.id).value();
+    }
+
+    const simplifyTypesSemantics = data => {
+        Object.entries(data.data).forEach(([name, schemas]) => {
+            Object.entries(schemas).forEach(([version, schema]) => {
+                schema.properties.forEach(p => {
+                    const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
+                    const m2 = p.name && p.name.length && p.name.match(/.+\/(.+)$/);
+                    const m3 = p.name && p.name.length && p.name.match(/.+:(.+)$/);
+                    p.shortName = (m1 && m1.length === 2) ? m1[1] : (m2 && m2.length === 2) ? m2[1] : (m3 && m3.length === 2) ? m3[1] : p.name;
+                });
+            });
+        });
+    };
+
+    const simplifyStructureSemantics = type => {
+        const result = {
+            id: type["http://schema.org/identifier"],
+            name: type["http://schema.org/name"],
+            occurrences: type["https://kg.ebrains.eu/vocab/meta/occurrences"],
+            links: [],
+            spaces: []
+        };
+        if(type["https://kg.ebrains.eu/vocab/meta/links"]) {
+            result.links = type["https://kg.ebrains.eu/vocab/meta/links"].map(link => ({
+                id: link["http://schema.org/identifier"],
+                name:  link["http://schema.org/name"],
+                target: link["http://schema.org/target"],
+                value: link["http://schema.org/value"]
+            }));
+        }
+        if(type["https://kg.ebrains.eu/vocab/meta/spaces"]) {
+            result.spaces = type["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => {
+                const res = {
+                    name:  space["http://schema.org/name"],
+                    occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"],
+                    links: []
+                };
+                if(space["https://kg.ebrains.eu/vocab/meta/links"]) {
+                    res.links = space["https://kg.ebrains.eu/vocab/meta/links"].map(link => ({
+                        id: link["http://schema.org/identifier"],
+                        name:  link["http://schema.org/name"],
+                        target: link["http://schema.org/target"],
+                        target_group: link["http://schema.org/targetGroup"]
+                    }));
+                }
+                return res;
+            });
+        }
+        return result;
+    }
+
+    const buildRelations = function(links) {
+        const relations = {};
+        links.forEach(link => {
             if (relations[link.source] === undefined) {
                 relations[link.source] = [];
             }
@@ -53874,104 +54013,77 @@ class RiotStore {
                 });
             }
         });
+        return relations;
+    }
 
-        let group = getGroups(structure.nodes);
-
-        let toBeHidden;
-        //First use
-        if (!localStorage.getItem(hiddenNodesLocalKey)) {
-            toBeHidden = [];
-            //Hidding nodes with too many connections
-            structure.nodes.forEach(node => {
-                node.hash = md5(node.id);
-                node.hidden = false;
-                if (relations[node.id] !== undefined &&
-                    whitelist.indexOf(node.id) < 0 &&
-                    group[node.group].value.length > minNodeCounts &&
-                    relations[node.id].length / group[node.group].value.length > AppConfig.structure.autoHideThreshold
-                ) {
-                    toBeHidden.push(node.id);
-                }
+    const buildStructure = data => {
+        const result = {
+            groupsMode: {
+                nodes: [],
+                links: [],
+                relations: {}
+            },
+            typesMode: {
+                nodes: [],
+                links: [],
+                relations: {}
+            }
+        };
+        data.data.forEach(rawType => {
+            const type = simplifyStructureSemantics(rawType);
+            result.typesMode.nodes.push({
+                hash: md5(type.id),
+                id: type.id,
+                schema: type.id, 
+                label: type.name,
+                numberOfInstances: type.occurrences
             });
-            localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
-        } else {
-            toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
-        }
-
-        structure.nodes.forEach(node => {
-            node.hash = md5(node.id);
-            node.hidden = false;
-            if (relations[node.id] !== undefined &&
-                whitelist.indexOf(node.id) < 0 &&
-                group[node.group].hidden ||
-                toBeHidden.includes(node.id)
-            ) {
-                node.hidden = true;
-            }
-        });
-
-        for (item in group) {
-            if (group[item].hidden) {
-                hiddenSpaces.push(item);
-            }
-        }
-
-        hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
-
-
-        Object.entries(structure.schemas).forEach(([name, schemas]) => {
-            Object.entries(schemas).forEach(([version, schema]) => {
-                schema.properties.forEach(p => {
-                    const m1 = p.name && p.name.length && p.name.match(/.+#(.+)$/);
-                    const m2 = p.name && p.name.length && p.name.match(/.+\/(.+)$/);
-                    const m3 = p.name && p.name.length && p.name.match(/.+:(.+)$/);
-                    p.shortName = (m1 && m1.length === 2) ? m1[1] : (m2 && m2.length === 2) ? m2[1] : (m3 && m3.length === 2) ? m3[1] : p.name;
+            result.typesMode.links = type.links.map(link => ({
+                id: link.id,
+                name: link.name,
+                source: link.id,
+                target: link.target,
+                provenance: link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance),
+                value: link.value
+            }));
+            type.spaces.forEach(space => {
+                result.groupsMode.nodes.push({
+                    hash: md5(space.name + "/" + type.id),
+                    id: type.id,
+                    schema: type.id, 
+                    label: type.name,
+                    numberOfInstances: space.occurrences,
+                    group: space.name
+                });
+                space.links.forEach(link => {
+                    result.groupsMode.links.push({
+                        id: link.id,
+                        name: link.name,
+                        source: type.id,
+                        source_group: space.name,
+                        target: link.target,
+                        target_group: link.target_group,
+                        provenance: link.name !== undefined && link.name.startsWith(AppConfig.structure.provenance)
+                    });
                 });
             });
         });
-        structureStore.toggleState("STRUCTURE_LOADED", true);
-        structureStore.toggleState("STRUCTURE_LOADING", false);
-        structureStore.notifyChange();
-    }
-
-    const simplifySemantics = data => {
-        const result = {
-            nodes: [],
-            links: [],
-            schemas: {}
-        };
-        result.nodes = data.data.map(type => ({
-            numberOfInstances:  type["https://kg.ebrains.eu/vocab/meta/spaces"].reduce((acc, space) => acc += space["https://kg.ebrains.eu/vocab/meta/occurrences"], 0), 
-            group: type["https://kg.ebrains.eu/vocab/meta/spaces"].length && type["https://kg.ebrains.eu/vocab/meta/spaces"][0]["http://schema.org/name"],
-            schema: type["http://schema.org/identifier"], 
-            id: type["http://schema.org/identifier"],
-            label: type["http://schema.org/name"]
-        }));
+        result.groupsMode.relations = buildRelations(result.groupsMode.links);
+        result.typesMode.relations = buildRelations(result.typesMode.links);
         return result;
       };
 
-    var retrigger = true;
     const loadStructure = function () {
-        if (!structure && !structureStore.is("STRUCTURE_LOADING")) {
+        if (!structureStore.is("STRUCTURE_LOADING")) {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
             $.get(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
-            .done((response, status, xhr) => {
-                //console.log(xhr.getAllResponseHeaders());
-                //console.log(xhr.getResponseHeader('location'));
-                if (response) {
-                    structure = simplifySemantics(response)
-                    loadData(structure);
-                } else {
-                    structureStore.toggleState("STRUCTURE_LOADING", false);
-                    if (retrigger) {
-                        retrigger = false;
-                        loadStructure();
-                    }
-                }
+            .done(response => {
+                structure = buildStructure(response);
+                generateViewData();
             })
-            .fail((e) => {
+            .fail(e => {
                 structureStore.toggleState("STRUCTURE_ERROR", true);
                 structureStore.toggleState("STRUCTURE_LOADED", false);
                 structureStore.toggleState("STRUCTURE_LOADING", false);
@@ -53980,6 +54092,36 @@ class RiotStore {
         }
     }
 
+    const loadType = function (name) {
+        if (!structureStore.is("TYPE_LOADING")) {
+            structureStore.toggleState("TYPE_LOADING", true);
+            structureStore.toggleState("TYPE_ERROR", false);
+            structureStore.notifyChange();
+            $.get(`https://kg-dev.humanbrainproject.eu/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
+            .done(response => types = simplifyTypeSemantics(response))
+            .fail(e => {
+                structureStore.toggleState("TYPE_ERROR", true);
+                structureStore.toggleState("TYPE_LOADED", false);
+                structureStore.toggleState("TYPE_LOADING", false);
+                structureStore.notifyChange();
+            });
+        }
+    }
+
+    const getNodes = () => structure ? (groupViewMode?structure.groupsMode.nodes:structure.typesMode.nodes):[];
+
+    const getLinks = () => structure ? (groupViewMode?structure.groupsMode.links:structure.typesMode.links):[];
+
+    const getRelations = () => structure ? (groupViewMode?structure.groupsMode.relations:structure.typesMode.relations):[];
+    
+    const getRelationsOf = id => {
+        const rel = getRelations()[id];
+        if (!rel) {
+            return [];
+        }
+        return rel;
+    }
+    
     const init = function () {
         
     }
@@ -53990,9 +54132,9 @@ class RiotStore {
 
     const structureStore = new RiotStore("structure",
     [
-        "STRUCTURE_LOADING", "STRUCTURE_ERROR",  "STRUCTURE_LOADED", "SCHEMA_SELECTED",
-        "SCHEMA_HIGHLIGHTED", "SEARCH_ACTIVE", "HIDE_ACTIVE",
-        "HIDE_SPACES_ACTIVE"
+        "STRUCTURE_LOADING", "STRUCTURE_ERROR",  "STRUCTURE_LOADED",
+        "TYPE_SELECTED", "TYPE_HIGHLIGHTED", "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
+        "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
     ],
     init, reset);
 
@@ -54008,17 +54150,17 @@ class RiotStore {
         if (typeof schema === "string") {
             schema = _.find(structure.nodes, node => node.id === schema);
         }
-        if (schema !== selectedSchema || schema === undefined) {
-            structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
-            highlightedSchema = undefined;
-            structureStore.toggleState("SCHEMA_SELECTED", true);
+        if (schema !== selectedType || schema === undefined) {
+            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+            highlightedType = undefined;
+            structureStore.toggleState("TYPE_SELECTED", true);
             structureStore.toggleState("SEARCH_ACTIVE", false);
-            selectedSchema = schema;
+            selectedType = schema;
         } else {
-            structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
-            highlightedSchema = undefined;
-            structureStore.toggleState("SCHEMA_SELECTED", false);
-            selectedSchema = undefined;
+            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+            highlightedType = undefined;
+            structureStore.toggleState("TYPE_SELECTED", false);
+            selectedType = undefined;
         }
         structureStore.notifyChange();
     });
@@ -54027,14 +54169,14 @@ class RiotStore {
         if (typeof schema === "string") {
             schema = _.find(structure.nodes, node => node.id === schema);
         }
-        structureStore.toggleState("SCHEMA_HIGHLIGHTED", true);
-        highlightedSchema = schema;
+        structureStore.toggleState("TYPE_HIGHLIGHTED", true);
+        highlightedType = schema;
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:schema_unhighlight", function () {
-        structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
-        highlightedSchema = undefined;
+        structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+        highlightedType = undefined;
         structureStore.notifyChange();
     });
 
@@ -54067,11 +54209,11 @@ class RiotStore {
         if (typeof schema === "string") {
             schema = _.find(structure.nodes, node => node.id === schema);
         }
-        if (schema !== undefined && schema === selectedSchema) {
-            structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
-            highlightedSchema = undefined;
-            structureStore.toggleState("SCHEMA_SELECTED", false);
-            selectedSchema = undefined;
+        if (schema !== undefined && schema === selectedType) {
+            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+            highlightedType = undefined;
+            structureStore.toggleState("TYPE_SELECTED", false);
+            selectedType = undefined;
         }
         schema.hidden = !schema.hidden;
         hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
@@ -54102,10 +54244,10 @@ class RiotStore {
     });
 
     structureStore.addAction("structure:all_schemas_toggle_hide", function (hide) {
-        structureStore.toggleState("SCHEMA_HIGHLIGHTED", false);
-        highlightedSchema = undefined;
-        structureStore.toggleState("SCHEMA_SELECTED", false);
-        selectedSchema = undefined;
+        structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+        highlightedType = undefined;
+        structureStore.toggleState("TYPE_SELECTED", false);
+        selectedType = undefined;
 
         structure.nodes.forEach(node => { node.hidden = !!hide });
         hiddenSchemas = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
@@ -54144,16 +54286,16 @@ class RiotStore {
      */
 
     structureStore.addInterface("getSelectedSchema", function () {
-        return selectedSchema;
+        return selectedType;
     });
 
     structureStore.addInterface("getHighlightedSchema", function () {
-        return highlightedSchema;
+        return highlightedType;
     });
+    
+    structureStore.addInterface("getNodes", getNodes);
 
-    structureStore.addInterface("getDatas", function () {
-        return structure;
-    });
+    structureStore.addInterface("getLinks", getLinks);
 
     structureStore.addInterface("getHiddenSchemas", function () {
         return hiddenSchemas;
@@ -54163,16 +54305,14 @@ class RiotStore {
         return hiddenSpaces;
     });
 
-    structureStore.addInterface("getRelationsOf", function (id) {
-        return relations[id] || [];
-    });
+    structureStore.addInterface("getRelationsOf", getRelationsOf);
 
     structureStore.addInterface("hasRelations", function (id, filterHidden) {
         if (filterHidden) {
-            let schemaRelations = _(relations[id] || []).filter(rel => hiddenSchemas.indexOf(rel.relatedSchema) === -1).value();
+            let schemaRelations = _(getRelationsOf(id)).filter(rel => hiddenSchemas.indexOf(rel.relatedSchema) === -1).value();
             return !!schemaRelations.length;
         } else {
-            return (relations[id] || []).length;
+            return getRelationsOf(id).length;
         }
     });
 
@@ -54231,7 +54371,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
         var nodeRscale;
         var linkRscale;
 
-        this.initialZoom = 0.3;
+        this.initialZoom = 1;
 
         this.on("mount", () =>  {
             RiotPolice.requestStore("structure", this);
@@ -54243,13 +54383,14 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                 return;
             }
             var self = this;
-            let datas = this.stores.structure.getDatas();
+            let nodes = this.stores.structure.getNodes();
+            let links = this.stores.structure.getLinks();
 
             let previousHiddenSchemasCount = this.hiddenSchemas.length;
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
 
-            var nodesNumOfInstances = datas.nodes.map((o) =>  { return o.numberOfInstances; })
-            var linkValues = datas.links.map((o) =>  {return o.value; })
+            var nodesNumOfInstances = nodes.map((o) =>  { return o.numberOfInstances; })
+            var linkValues = links.map((o) =>  {return o.value; })
             nodeRscale = d3.scaleLog()
                 .domain([1,d3.max(nodesNumOfInstances)])
                 .range([3,maxNodeSize])
@@ -54258,8 +54399,8 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                 .range([3,maxLinkSize])
 
             if (!this.svg || previousHiddenSchemasCount !== this.hiddenSchemas.length) {
-                this.nodes = _.filter(datas.nodes, node => !node.hidden);
-                this.links = _.filter(_.cloneDeep(datas.links), link => this.hiddenSchemas.indexOf(link.source) ===
+                this.nodes = _.filter(nodes, node => !node.hidden);
+                this.links = _.filter(_.cloneDeep(links), link => this.hiddenSchemas.indexOf(link.source) ===
                     -1 && this.hiddenSchemas.indexOf(link.target) === -1);
                 $(this.refs.svg).empty().css({
                     opacity: 0
@@ -54272,7 +54413,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                 });
             }
 
-            if (this.stores.structure.is("SCHEMA_SELECTED") && this.hiddenSchemas.indexOf(this.stores.structure
+            if (this.stores.structure.is("TYPE_SELECTED") && this.hiddenSchemas.indexOf(this.stores.structure
                     .getSelectedSchema().id) === -1) {
                 let newSelectedSchema = this.stores.structure.getSelectedSchema();
                 let recenter = newSelectedSchema !== this.selectedSchema;
@@ -54298,7 +54439,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            if (this.stores.structure.is("SCHEMA_HIGHLIGHTED") && this.hiddenSchemas.indexOf(this.stores.structure
+            if (this.stores.structure.is("TYPE_HIGHLIGHTED") && this.hiddenSchemas.indexOf(this.stores.structure
                     .getHighlightedSchema().id) === -1) {
                 this.highlightedSchema = this.stores.structure.getHighlightedSchema();
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
@@ -54345,7 +54486,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
         });
 
         this.capture = () => {
-            let date = new Date(self.stores.structure.getDatas().lastUpdate);
+            let date = new Date();
             let displayText = this.view.selectAll(".node__label").attr("display");
             this.view.selectAll(".node__label").attr("display", "");
             saveSvgAsPng(this.refs.svg, "HBP_KG_" + moment(date).format("YYYY-MM-DD_kk-mm-ss") + ".png", {
@@ -54406,8 +54547,6 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
             var nodesg = this.view.append("g")
                 .attr("class", "nodes")
 
-            var groupIds = d3.nest().key((n) => n.group ).entries(this.nodes)
-
             self.simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink()
                     .id(function(d) { return d.id; })
@@ -54426,37 +54565,6 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     })
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
-
-            paths = hull.selectAll('.hull')
-                .data(groupIds, (d) => d )
-                .enter()
-                .append('g')
-                .attr('class', 'hull')
-                .append('path')
-                .style( 'fill-opacity', 0.3)
-                .style('stroke-width', 3)
-                .style('stroke', (d) => self.color(d.key))
-                .style('fill', (d) => self.color(d.key))
-                .style('opacity', 0)
-
-            paths
-                .transition()
-                .duration(2000)
-                .style('opacity', 1)
-
-            hull.selectAll('.hull')
-                .call(d3.drag()
-                    .on('start', group_dragstarted)
-                    .on('drag', group_dragged)
-                    .on('end', group_dragended)
-                ).on("mouseover", (d)=>{
-                    self.hullName = d.key
-                    self.update()
-                })
-                .on("mouseout", (d)=>{
-                    self.hullName = ""
-                    self.update()
-                })
 
             restart()
 
@@ -54669,7 +54777,6 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     .force("x", forceX)
                     .force("y", forceY)
 
-                updateGroups();
             }
 
             function dragstarted(d) {
@@ -54804,7 +54911,7 @@ riot.tag2('kg-hide-panel', '<button class="open-panel" onclick="{togglePanel}"> 
         });
 
         this.on("update", function () {
-            this.nodes = _.orderBy(this.stores.structure.getDatas().nodes, 'numberOfInstances', 'desc');
+            this.nodes = _.orderBy(this.stores.structure.getNodes(), 'numberOfInstances', 'desc');
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
 
             if(this.stores.structure.is("HIDE_ACTIVE")){
@@ -54865,7 +54972,7 @@ riot.tag2('kg-hide-spaces-panel', '<button class="open-panel" onclick="{togglePa
         });
 
         this.on("update", function () {
-            let spacesMap = groupBy(this.stores.structure.getDatas().nodes, (node) => {return node.group});
+            let spacesMap = groupBy(this.stores.structure.getNodes(), (node) => {return node.group});
             this.hiddenSpaces = this.stores.structure.getHiddenSpaces();
             let mapIt = spacesMap[Symbol.iterator]();
             this.spaces = [];
@@ -55015,23 +55122,23 @@ riot.tag2('kg-sidebar', '<div if="{schemaSelected}" class="{separator: schemaSel
 
         this.on("update", function () {
             var self = this;
-            this.datas = this.stores.structure.getDatas();
+            this.nodes = this.stores.structure.getNodes();
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
 
             this.schemasWithoutRelations = [];
-            this.datas.nodes.forEach(n => {
+            this.nodes.forEach(n => {
                 if (!n.hidden && !self.stores.structure.hasRelations(n.id, true)){
                     self.schemasWithoutRelations.push(n);
                 }
             });
 
-            this.schemaSelected = this.stores.structure.is("SCHEMA_SELECTED");
+            this.schemaSelected = this.stores.structure.is("TYPE_SELECTED");
             if(!this.schemaSelected){
                 return;
             }
             this.selectedSchema = this.stores.structure.getSelectedSchema();
 
-            this.sortedProperties = _.orderBy(this.datas.schemas[this.selectedSchema.schema][this.selectedSchema.version].properties, o => o.numberOfInstances, 'desc');
+            this.sortedProperties = [];
             this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedSchema.id), o => o.relationCount, 'desc');
         });
 
@@ -55088,7 +55195,7 @@ riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src=
         });
         this.on("update", function(){
             if(this.stores.structure.is("STRUCTURE_LOADED")){
-                this.date = new Date(this.stores.structure.getDatas().lastUpdate);
+                this.date = new Date();
             }
         });
 });

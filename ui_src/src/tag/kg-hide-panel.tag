@@ -167,7 +167,7 @@
         });
 
         this.on("update", function () {
-            this.nodes = _.orderBy(this.stores.structure.getDatas().nodes, 'numberOfInstances', 'desc');
+            this.nodes = _.orderBy(this.stores.structure.getNodes(), 'numberOfInstances', 'desc');
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
 
             if(this.stores.structure.is("HIDE_ACTIVE")){

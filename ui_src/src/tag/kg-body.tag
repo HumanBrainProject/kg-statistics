@@ -236,7 +236,7 @@
         var nodeRscale;
         var linkRscale;
 
-        this.initialZoom = 0.3;
+        this.initialZoom = 1; //0.3;
 
         this.on("mount", () =>  {
             RiotPolice.requestStore("structure", this);
@@ -248,15 +248,16 @@
                 return;
             }
             var self = this;
-            let datas = this.stores.structure.getDatas();
+            let nodes = this.stores.structure.getNodes();
+            let links = this.stores.structure.getLinks();
 
             let previousHiddenSchemasCount = this.hiddenSchemas.length;
             this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
 
             //Calculating the max numberof instance and link values
             //to prepare a scale for the node radius and link width
-            var nodesNumOfInstances = datas.nodes.map((o) =>  { return o.numberOfInstances; })
-            var linkValues = datas.links.map((o) =>  {return o.value; })
+            var nodesNumOfInstances = nodes.map((o) =>  { return o.numberOfInstances; })
+            var linkValues = links.map((o) =>  {return o.value; })
             nodeRscale = d3.scaleLog()
                 .domain([1,d3.max(nodesNumOfInstances)])
                 .range([3,maxNodeSize])
@@ -267,8 +268,8 @@
 
 
             if (!this.svg || previousHiddenSchemasCount !== this.hiddenSchemas.length) {
-                this.nodes = _.filter(datas.nodes, node => !node.hidden);
-                this.links = _.filter(_.cloneDeep(datas.links), link => this.hiddenSchemas.indexOf(link.source) ===
+                this.nodes = _.filter(nodes, node => !node.hidden);
+                this.links = _.filter(_.cloneDeep(links), link => this.hiddenSchemas.indexOf(link.source) ===
                     -1 && this.hiddenSchemas.indexOf(link.target) === -1);
                 $(this.refs.svg).empty().css({
                     opacity: 0
@@ -281,7 +282,7 @@
                 });
             }
 
-            if (this.stores.structure.is("SCHEMA_SELECTED") && this.hiddenSchemas.indexOf(this.stores.structure
+            if (this.stores.structure.is("TYPE_SELECTED") && this.hiddenSchemas.indexOf(this.stores.structure
                     .getSelectedSchema().id) === -1) {
                 let newSelectedSchema = this.stores.structure.getSelectedSchema();
                 let recenter = newSelectedSchema !== this.selectedSchema;
@@ -307,7 +308,7 @@
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            if (this.stores.structure.is("SCHEMA_HIGHLIGHTED") && this.hiddenSchemas.indexOf(this.stores.structure
+            if (this.stores.structure.is("TYPE_HIGHLIGHTED") && this.hiddenSchemas.indexOf(this.stores.structure
                     .getHighlightedSchema().id) === -1) {
                 this.highlightedSchema = this.stores.structure.getHighlightedSchema();
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
@@ -354,7 +355,7 @@
         });
 
         this.capture = () => {            
-            let date = new Date(self.stores.structure.getDatas().lastUpdate);
+            let date = new Date();
             let displayText = this.view.selectAll(".node__label").attr("display");
             this.view.selectAll(".node__label").attr("display", "");
             saveSvgAsPng(this.refs.svg, "HBP_KG_" + moment(date).format("YYYY-MM-DD_kk-mm-ss") + ".png", {
@@ -418,7 +419,7 @@
             var nodesg = this.view.append("g")
                 .attr("class", "nodes")
             // Grouping nodes by organization
-            var groupIds = d3.nest().key((n) => n.group ).entries(this.nodes)
+            //var groupIds = d3.nest().key((n) => n.group ).entries(this.nodes)
 
             self.simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink()
@@ -441,6 +442,7 @@
 
 
             // SVG path for hulls
+            /*
             paths = hull.selectAll('.hull')
                 .data(groupIds, (d) => d )
                 .enter()
@@ -472,6 +474,7 @@
                     self.hullName = ""
                     self.update()
                 })
+            */
         
             restart()    
             
@@ -694,7 +697,7 @@
                     .force("x", forceX)
                     .force("y", forceY)
             
-                updateGroups();
+                //updateGroups();
             }
 
             
