@@ -225,11 +225,11 @@
     </style>
     <div class="kg-app-container ">
         <kg-topbar></kg-topbar>
-        <kg-body></kg-body>
-        <kg-hide-panel></kg-hide-panel>
-        <kg-hide-spaces-panel></kg-hide-spaces-panel>
-        <kg-search-panel></kg-search-panel>
-        <kg-sidebar></kg-sidebar>
+        <kg-body if={isLoaded}></kg-body>
+        <kg-hide-panel if={isLoaded}></kg-hide-panel>
+        <kg-hide-spaces-panel if={isLoaded}></kg-hide-spaces-panel>
+        <kg-search-panel if={isLoaded}></kg-search-panel>
+        <kg-sidebar if={isLoaded}></kg-sidebar>
         <div class="loading-panel {show: isLoading}">
             <span class="loading-spinner">
                 <img src="img/ebrains.svg" alt="loading..." />

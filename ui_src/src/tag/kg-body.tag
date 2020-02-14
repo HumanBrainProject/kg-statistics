@@ -215,6 +215,8 @@
 
     <script>
         let self = this;
+        this.groupViewMode = false;
+        this.lastUpdate = null;
         this.simulation;
         this.nodes = [];
         this.links = [];
@@ -236,18 +238,28 @@
         var nodeRscale;
         var linkRscale;
 
-        this.initialZoom = 1; //0.3;
+        this.initialZoom = 1;
+        this.groupInitialZoom = 0.5; //0.3;
 
         this.on("mount", () =>  {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.draw();
         });
 
         this.on("update", () => {
+            this.draw();
+        });
+
+        this.draw = () => {
             if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
             var self = this;
+            const previousGroupViewMode = this.groupViewMode;
+            this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
+            const previousLastUpdate = this.lastUpdate;
+            this.lastUpdate = this.stores.structure.getLastUpdate();
             let nodes = this.stores.structure.getNodes();
             let links = this.stores.structure.getLinks();
 
@@ -265,9 +277,7 @@
                 .domain([1,d3.max(linkValues)])
                 .range([3,maxLinkSize])
 
-
-
-            if (!this.svg || previousHiddenSchemasCount !== this.hiddenSchemas.length) {
+            if (!this.svg || previousHiddenSchemasCount !== this.hiddenSchemas.length || this.groupViewMode !== previousGroupViewMode || this.lastUpdate !== previousLastUpdate) {
                 this.nodes = _.filter(nodes, node => !node.hidden);
                 this.links = _.filter(_.cloneDeep(links), link => this.hiddenSchemas.indexOf(link.source) ===
                     -1 && this.hiddenSchemas.indexOf(link.target) === -1);
@@ -331,16 +341,16 @@
             } else {
                 this.searchResults = [];
             }
-
-        });
+        };
 
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
             let height = this.svg.node().getBoundingClientRect().height;
-            let zoomScaleTo = this.initialZoom;
+            const zoom = this.groupViewMode?this.groupInitialZoom:this.initialZoom;
+            let zoomScaleTo = zoom;
             this.svg.transition().duration(500)
-                .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 * this.initialZoom, height / 2 *
-                    this.initialZoom).scale(zoomScaleTo));
+                .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 * zoom, height / 2 *
+                    zoom).scale(zoomScaleTo));
         }
 
         $(document).on("keydown", (e) => {
@@ -418,8 +428,12 @@
                 .attr("class", "link-nodes")
             var nodesg = this.view.append("g")
                 .attr("class", "nodes")
-            // Grouping nodes by organization
-            //var groupIds = d3.nest().key((n) => n.group ).entries(this.nodes)
+
+            var groupIds = [];
+            if (this.groupViewMode) {
+                // Grouping nodes by organization
+                groupIds = d3.nest().key((n) => n.group ).entries(this.nodes);
+            }
 
             self.simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink()
@@ -442,39 +456,39 @@
 
 
             // SVG path for hulls
-            /*
-            paths = hull.selectAll('.hull')
-                .data(groupIds, (d) => d )
-                .enter()
-                .append('g')
-                .attr('class', 'hull')
-                .append('path')
-                .style( 'fill-opacity', 0.3)
-                .style('stroke-width', 3)
-                .style('stroke', (d) => self.color(d.key))
-                .style('fill', (d) => self.color(d.key))
-                .style('opacity', 0)
+            if (this.groupViewMode) {
+                paths = hull.selectAll('.hull')
+                    .data(groupIds, (d) => d )
+                    .enter()
+                    .append('g')
+                    .attr('class', 'hull')
+                    .append('path')
+                    .style( 'fill-opacity', 0.3)
+                    .style('stroke-width', 3)
+                    .style('stroke', (d) => self.color(d.key))
+                    .style('fill', (d) => self.color(d.key))
+                    .style('opacity', 0)
 
-            paths
-                .transition()
-                .duration(2000)
-                .style('opacity', 1)
+                paths
+                    .transition()
+                    .duration(2000)
+                    .style('opacity', 1)
 
-             // add interaction to the groups
-            hull.selectAll('.hull')
-                .call(d3.drag()
-                    .on('start', group_dragstarted)
-                    .on('drag', group_dragged)
-                    .on('end', group_dragended)
-                ).on("mouseover", (d)=>{
-                    self.hullName = d.key
-                    self.update()
-                })
-                .on("mouseout", (d)=>{
-                    self.hullName = ""
-                    self.update()
-                })
-            */
+                // add interaction to the groups
+                hull.selectAll('.hull')
+                    .call(d3.drag()
+                        .on('start', group_dragstarted)
+                        .on('drag', group_dragged)
+                        .on('end', group_dragended)
+                    ).on("mouseover", (d)=>{
+                        self.hullName = d.key
+                        self.update()
+                    })
+                    .on("mouseout", (d)=>{
+                        self.hullName = ""
+                        self.update()
+                    });
+            }
         
             restart()    
             
@@ -489,7 +503,7 @@
             this.svg.call(this.zoom);
 
             //Initial scale
-            var previousZoom = this.initialZoom;
+            var previousZoom = this.groupViewMode?this.groupInitialZoom:this.initialZoom;
             this.svg.call(this.zoom.scaleTo, previousZoom);
             hull.call(this.zoom.scaleTo, previousZoom);
             
@@ -696,11 +710,11 @@
                 self.simulation
                     .force("x", forceX)
                     .force("y", forceY)
-            
-                //updateGroups();
-            }
 
-            
+                if (self.groupViewMode) {
+                    updateGroups();
+                }
+            }
 
             function dragstarted(d) {
                 if (!d3.event.active) self.simulation.alphaTarget(0.01).restart();

@@ -18,64 +18,58 @@
     <style scoped>
         :scope{
             display:block;
-        }
-        .title {
-            margin-left:10px;
-            font-size: 20px;
-            font-weight: 700;
             color: white;
         }
-
-        .date{
-            height:100%;
-            margin-right:10px;
+        
+        .group-view__toggle {
+            height: 24px;
+            display: inline-grid;
+            grid-template-columns: repeat(2, 24px);
+            margin: 3px 0;
+            border-radius: 20px;
+            background: #141618;
         }
 
-        .btn{
-            width:20px;
-            height:20px;
-        }
-
-        .menu{
-            transition: all 0.3s ease 0s;
-            padding: 10px 10px 10px 10px;
-        }
-
-        .menu:hover{
-            background-color: #3e3e3e;
-            border-radius:2px;
+        button.group-view__toggle__button {
+            -webkit-appearance: none;
+            display: inline-block;
+            height: 24px;
+            margin: 0;
+            padding: 0;
+            border: 0;
             cursor: pointer;
-            color:#3498db;
+            font-size: 0.66em;
+            text-align: center;
+            transition: all .2s ease;
+            background: none;
+            line-height: 24px;
+            color: white;
+            outline: none;
         }
 
-        .header-left{
-            display:flex;
-            align-items:center;
-            justify-content:left;
-            margin-left:20px;
+        button.group-view__toggle__button.selected {
+            transform: scale(1.12);
+            font-size: 0.8em;
+            background: #4f5658;
+            color: white;
+            border-radius: 50%;
         }
-        .header-right{
-            color:white;
-            display:flex;
-            align-items:center;
-            margin-right:20px;
-        }
-        .header{
-            display:flex;
-            align-items:center;
-            justify-content: space-between;
-            height:var(--topbar-height);
+
+        span {
+            padding-left: 3px;
         }
     </style>
-    <div className="kgs-theme_toggle">
-          <button class="kgs-theme_toggle__button  {selected: !groupViewMode}" onClick={toggle}>
-            <i class="fa fa-moon-o"></i>
-          </button>
-          <button class="kgs-theme_toggle__button  {selected: groupViewMode}" onClick={toggle}>
-            <i class="fa fa-sun-o"></i>
-          </button>
-        ))}
-      </div>
+    <div>
+        <div class="group-view__toggle">
+            <button class="group-view__toggle__button {selected: groupViewMode}" onClick={toggle} title="group by space">
+                <i class="fa fa-check"></i>
+            </button>
+            <button class="group-view__toggle__button {selected: !groupViewMode}" onClick={toggle} title="hide spaces">
+                <i class="fa fa-close"></i>
+            </button>
+        </div>
+        <span>group by space</span>
+    </div>
 
     <script>
         this.groupViewMode = false;

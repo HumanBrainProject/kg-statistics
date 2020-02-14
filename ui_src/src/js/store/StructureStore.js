@@ -16,6 +16,7 @@
 
 (function () {
     let structure = null;
+    let lastUpdate = null;
     let groupViewMode = false;
     let hiddenSchemas = [];
     let hiddenSpaces = [];
@@ -76,7 +77,7 @@
             toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
         }
 
-        structure.nodes.forEach(node => {
+        nodes.forEach(node => {
             node.hidden = false;
             if (relations[node.id] !== undefined &&
                 whitelist.indexOf(node.id) < 0 &&
@@ -269,11 +270,13 @@
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`https://kg-dev.humanbrainproject.eu/api/types?stage=LIVE&withProperties=false`)
+            fetch(`/api/types?stage=LIVE&withProperties=false`)
             .then(response => response.json())
             .then(data => {
                 structure = buildStructure(data);
                 generateViewData(groupViewMode);
+                types = {};
+                lastUpdate = new Date();
                 structureStore.toggleState("STRUCTURE_LOADED", true);
                 structureStore.toggleState("STRUCTURE_LOADING", false);
                 structureStore.notifyChange();
@@ -292,7 +295,7 @@
             structureStore.toggleState("TYPE_LOADING", true);
             structureStore.toggleState("TYPE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`https://kg-dev.humanbrainproject.eu/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
+            fetch(`/api/typesByName?stage=LIVE&withProperties=true&name=${name}`)
             .then(response => response.json())
             .then(data => types = simplifyTypeSemantics(data))
             .catch(e => {
@@ -487,6 +490,10 @@
     /**
      * Store public interfaces
      */
+
+    structureStore.addInterface("getLastUpdate", function () {
+        return lastUpdate;
+    });
 
     structureStore.addInterface("getSelectedSchema", function () {
         return selectedType;

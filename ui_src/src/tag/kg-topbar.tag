@@ -66,29 +66,51 @@
             justify-content: space-between;
             height:var(--topbar-height);
         }
+        button.refresh {
+            margin: 0;
+            padding: 11px 28px;
+            border: 0;
+            border-radius: 3px;
+            background-color: #333;
+            color: #c9cccf;
+            font-size: 1em;
+            text-align: center;
+            transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in;
+            cursor: pointer;
+        }
+        button.refresh:hover{
+            box-shadow: 3px 3px 6px black;
+            background-color: #292929;
+            color: white;
+        }
     </style>
     <div class="header">
         <div class="header-left">
             <img src="img/ebrains.svg" alt="" width="40" height="40" />
             <div class="title">{AppConfig.title}</div>
-        </div>    
-        <div class="header-right" >
+        </div>
+        <kg-view-mode if={isLoaded}></kg-view-mode>    
+        <div class="header-right" if={isLoaded} >
             <div class="date" if={date}>KG State at : {date}</div>
+            <button class="refresh" onClick={refresh}>
+                <i class="fa fa-refresh">&nbsp;Refresh</i>
+            </button>
         </div>
     </div>
 
     <script>
         this.date = "";
-        this.showModal = false;
+        this.isLoaded = false;
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
         this.on("update", function(){
-            if(this.stores.structure.is("STRUCTURE_LOADED")){
-                this.date = new Date();
-            }
+         this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED")
+         this.date = this.stores.structure.getLastUpdate();
         });
+
+        this.refresh = e => RiotPolice.trigger("structure:load");
     </script>
 </kg-topbar>
