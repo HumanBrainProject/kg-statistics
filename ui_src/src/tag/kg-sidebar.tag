@@ -78,7 +78,7 @@
             line-height:1;
             position:relative;
         }
-        .numberOfInstances {
+        .occurrences {
             background-color: #444;
             display: inline-block;   
             min-width: 21px;
@@ -164,21 +164,19 @@
         }
     </style>
 
-    <div if={schemaSelected} class={separator: schemaSelected && schemasWithoutRelations.length}>
+    <div if={selectedType} class={separator: selectedType && typesWithoutRelations.length}>
         <div class="actions">
             <button title="Close this view" class="close" onclick={close}><i class="fa fa-close"></i></button>
-            <button title="Manage instances" class="manage" onclick={manageInstances}><i class="fa fa-pencil"></i></button>
-            <button title="Hide the corresponding node" class="hide" onclick={toggleHide}><i class="fa {selectedSchema.hidden?'fa-eye':'fa-eye-slash'}"></i></button>
+            <button title="Hide the corresponding node" class="hide" onclick={toggleHide}><i class="fa {selectedType.hidden?'fa-eye':'fa-eye-slash'}"></i></button>
         </div>
-        <div class="title">{selectedSchema.schema}</div>
-        <div class="version">Version: {selectedSchema.version}</div>
-        <div class="instances">Number of instances: <span class="numberOfInstances">{selectedSchema.numberOfInstances}</span></div>
+        <div class="title">{selectedType.id}</div>
+        <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div>
         <div class="properties">Properties:
             <ul>
-                <li each={property in sortedProperties} title={property.name}>
-                    {property.shortName} <span class="numberOfInstances">{property.numberOfInstances}</span>
-                    <div if={property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:{100-property.instancesWithoutProp/selectedSchema.numberOfInstances*100}%"></div>
-                    <div if={property.instancesWithoutProp} class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedSchema.numberOfInstances*100)}% ({selectedSchema.numberOfInstances-property.instancesWithoutProp})</div>
+                <li each={property in selectedType.properties} title={property.name}>
+                    {property.name} <span class="occurrences">{property.occurrences}</span>
+                    <div if={property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:{100-property.instancesWithoutProp/selectedType.occurrences*100}%"></div>
+                    <div if={property.instancesWithoutProp} class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedType.occurrences*100)}% ({selectedType.occurrences-property.instancesWithoutProp})</div>
                     <div if={!property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:100%"></div>
                     <div if={!property.instancesWithoutProp} class="number-instances-wo-prop">100%</div>
                 </li>
@@ -190,23 +188,23 @@
             </div>
             <ul>
                 <li each={relation in sortedRelations}>
-                    <a class={disabled:hiddenSchemas.indexOf(relation.relationId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightSchema} onclick={selectRelation}>{relation.relationId}</a><span class="numberOfInstances">{relation.relationCount}</span>
+                    <a class={disabled:hiddenTypes.indexOf(relation.relationId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightType} onclick={selectRelation}>{relation.relationId}</a><span class="occurrences">{relation.relationCount}</span>
                 </li>
             </ul>
         </div>
     </div>
-    <div class="schemas" if={schemasWithoutRelations.length}>Schema(s) without visible relation:
+    <div class="types" if={typesWithoutRelations.length}>Type(s) without visible relation:
         <ul>
-            <li each={schema in schemasWithoutRelations}>
-                <a href="#" onmouseover={highlightSchema} onmouseout={unhighlightSchema} onclick={selectSchema}>{schema.id}</a>
+            <li each={type in typesWithoutRelations}>
+                <a href="#" onmouseover={highlightType} onmouseout={unhighlightType} onclick={selectType}>{type.id}</a>
             </li>
         </ul>
     </div>
 
     <script>
-        this.schemaSelected = false;
-        this.schemasWithoutRelations = [];
-        this.hiddenSchemas = [];
+        this.selectedType = false;
+        this.typesWithoutRelations = [];
+        this.hiddenTypes = [];
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
@@ -221,65 +219,50 @@
         this.on("update", function () {
             var self = this;
             this.nodes = this.stores.structure.getNodes();
-            this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
+            this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
-            this.schemasWithoutRelations = [];
+            this.typesWithoutRelations = [];
             this.nodes.forEach(n => {
                 if (!n.hidden && !self.stores.structure.hasRelations(n.id, true)){
-                    self.schemasWithoutRelations.push(n);
+                    self.typesWithoutRelations.push(n);
                 }
             });
 
-            this.schemaSelected = this.stores.structure.is("TYPE_SELECTED");
-            if(!this.schemaSelected){
+            const selectedType = this.stores.structure.is("SELECTED_TYPE") && this.stores.structure.getSelectedType();
+            if(!selectedType){
                 return;
             }
-            this.selectedSchema = this.stores.structure.getSelectedSchema();
-
-            this.sortedProperties = [];// _.orderBy(this.datas.schemas[this.selectedSchema.schema][this.selectedSchema.version].properties, o => o.numberOfInstances, 'desc');
-            this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedSchema.id), o => o.relationCount, 'desc');
+            this.selectedType = selectedType.parent;
+          
+            this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedType.id), o => o.relationCount, 'desc');
         });
 
-        this.manageInstances = function(e){
-            if (this.schemaSelected && this.selectedSchema.id) {
-                const schema = {
-                    id: this.selectedSchema.id,
-                    name: this.selectedSchema.schema,
-                    version: this.selectedSchema.version,
-                    label: this.selectedSchema.label,
-                    numberOfInstances: this.selectedSchema.numberOfInstances,
-                    properties: this.sortedProperties
-                };
-                RiotPolice.trigger("instances:show", schema);
-            }
-        }
-
         this.close = function(e){
-            RiotPolice.trigger("structure:schema_select", this.selectedSchema);
+            RiotPolice.trigger("structure:type_select", this.selectedType);
         }
         this.toggleHide = function(e){
-            RiotPolice.trigger("structure:schema_toggle_hide", this.selectedSchema);
+            RiotPolice.trigger("structure:type_toggle_hide", this.selectedType);
         }
-        this.selectSchema = function(e){
-            if (!this.schemaSelected || this.selectedSchema.id !==  e.item.schema.id)
-                RiotPolice.trigger("structure:schema_select", e.item.schema.id);
+        this.selectType = function(e){
+            if (!this.selectedType || this.selectedType.id !==  e.item.type.id)
+                RiotPolice.trigger("structure:type_select", e.item.type);
         }
-        this.highlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_highlight", e.item.schema.id);
+        this.highlightType = function(e){
+            RiotPolice.trigger("structure:type_highlight", e.item.type);
         }
-        this.unhighlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_unhighlight");
+        this.unhighlightType = function(e){
+            RiotPolice.trigger("structure:type_unhighlight");
         }
 
         this.selectRelation = function(e){
-            RiotPolice.trigger("structure:schema_select", e.item.relation.relationId);
+            RiotPolice.trigger("structure:type_select", e.item.relation.relationId);
         }
         this.highlightRelation = function(e){
-            RiotPolice.trigger("structure:schema_highlight", e.item.relation.relationId);
+            RiotPolice.trigger("structure:type_highlight", e.item.relation.relationId);
         }
 
-        this.unhighlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_unhighlight");
+        this.unhighlightType = function(e){
+            RiotPolice.trigger("structure:type_unhighlight");
         }
     </script>
 </kg-sidebar>

@@ -60,7 +60,7 @@
             padding:0 4px;
         }
 
-        .schemas{
+        .types{
             margin-top: 15px;
             max-height:calc(100% - 51px);
             overflow-y:auto;
@@ -77,7 +77,7 @@
             line-height: 1;
         }
 
-        .numberOfInstances {
+        .occurrences {
             background-color: #444;
             display: inline-block;   
             min-width: 21px;
@@ -134,7 +134,7 @@
 
     <button class="open-panel" onclick={togglePanel}>
         <i class="fa fa-eye-slash" aria-hidden="true"></i>
-        <span class="bubble">{hiddenSchemas.length}</span>
+        <span class="bubble">{hiddenTypes.length}</span>
     </button>
     
     <div class="title">
@@ -148,10 +148,10 @@
     <div class="nodelist">
         <ul>
             <li each={node in nodes}>
-                <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightSchema} onmouseout={unhighlightSchema}>
+                <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightType} onmouseout={unhighlightType}>
                     {node.id}
                 </a>
-                <span class="numberOfInstances">{node.numberOfInstances}</span>
+                <span class="occurrences">{node.occurrences}</span>
             </li>
         </ul>
     </div>
@@ -159,7 +159,7 @@
     <script>
         this.query = "";
         this.results = [];
-        this.hiddenSchemas = [];
+        this.hiddenTypes = [];
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
@@ -167,8 +167,8 @@
         });
 
         this.on("update", function () {
-            this.nodes = _.orderBy(this.stores.structure.getNodes(), 'numberOfInstances', 'desc');
-            this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
+            this.nodes = _.orderBy(this.stores.structure.getNodes(), 'occurrences', 'desc');
+            this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
             if(this.stores.structure.is("HIDE_ACTIVE")){
                 if(!$(this.root).hasClass("open")){
@@ -186,19 +186,19 @@
             RiotPolice.trigger("structure:hide_toggle");
         }
         this.toggleHide = function(e){
-            RiotPolice.trigger("structure:schema_toggle_hide", e.item.node);
+            RiotPolice.trigger("structure:type_toggle_hide", e.item.node);
         }
         this.hideAll = function(){
-            RiotPolice.trigger("structure:all_schemas_toggle_hide", true);
+            RiotPolice.trigger("structure:all_types_toggle_hide", true);
         }
         this.showAll = function(){
-            RiotPolice.trigger("structure:all_schemas_toggle_hide", false);
+            RiotPolice.trigger("structure:all_types_toggle_hide", false);
         }
-        this.highlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_highlight", e.item.node);
+        this.highlightType = function(e){
+            RiotPolice.trigger("structure:type_highlight", e.item.node);
         }
-        this.unhighlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_unhighlight");
+        this.unhighlightType = function(e){
+            RiotPolice.trigger("structure:type_unhighlight");
         }
     </script>
 </kg-hide-panel>

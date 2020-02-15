@@ -67,7 +67,7 @@
             transition: stroke 0.5s ease-out, fill 0.5s ease-out, fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out;
         }
 
-        .node__nb-instance {
+        .node__occurrences {
             font-size: 12px;
             fill: white;
             font-weight: bold;
@@ -215,26 +215,28 @@
 
     <script>
         let self = this;
+
+        const maxLinkSize = 40;
+        const maxNodeSize = 60;
+
         this.groupViewMode = false;
         this.lastUpdate = null;
         this.simulation;
         this.nodes = [];
         this.links = [];
         this.hullName = "";
-        this.hiddenSchemas = [];
+        this.hiddenTypes = [];
         this.color = d3.scaleOrdinal(d3.schemeCategory20);
+
         var polygon;
         var centroid;
         var scaleFactor = 1.4;
-        var offset = 15;
         var links, nodes, linknodes;
         var circleOpts = {
             minRadius: 20,
             maxRadius: 50
         }
 
-        var maxLinkSize = 40;
-        var maxNodeSize = 60;
         var nodeRscale;
         var linkRscale;
 
@@ -260,16 +262,16 @@
             this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
             const previousLastUpdate = this.lastUpdate;
             this.lastUpdate = this.stores.structure.getLastUpdate();
-            let nodes = this.stores.structure.getNodes();
-            let links = this.stores.structure.getLinks();
+            var nodes = this.stores.structure.getNodes();
+            var links = this.stores.structure.getLinks();
 
-            let previousHiddenSchemasCount = this.hiddenSchemas.length;
-            this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
+            let previousHiddenTypesCount = this.hiddenTypes.length;
+            this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
             //Calculating the max numberof instance and link values
             //to prepare a scale for the node radius and link width
-            var nodesNumOfInstances = nodes.map((o) =>  { return o.numberOfInstances; })
-            var linkValues = links.map((o) =>  {return o.value; })
+            var nodesNumOfInstances = nodes.map(o => o.occurrences);
+            var linkValues = links.map(o => o.value);
             nodeRscale = d3.scaleLog()
                 .domain([1,d3.max(nodesNumOfInstances)])
                 .range([3,maxNodeSize])
@@ -277,10 +279,10 @@
                 .domain([1,d3.max(linkValues)])
                 .range([3,maxLinkSize])
 
-            if (!this.svg || previousHiddenSchemasCount !== this.hiddenSchemas.length || this.groupViewMode !== previousGroupViewMode || this.lastUpdate !== previousLastUpdate) {
+            if (!this.svg || previousHiddenTypesCount !== this.hiddenTypes.length || this.groupViewMode !== previousGroupViewMode || this.lastUpdate !== previousLastUpdate) {
                 this.nodes = _.filter(nodes, node => !node.hidden);
-                this.links = _.filter(_.cloneDeep(links), link => this.hiddenSchemas.indexOf(link.source) ===
-                    -1 && this.hiddenSchemas.indexOf(link.target) === -1);
+                this.links = _.filter(_.cloneDeep(links), link => this.hiddenTypes.indexOf(link.source) ===
+                    -1 && this.hiddenTypes.indexOf(link.target) === -1);
                 $(this.refs.svg).empty().css({
                     opacity: 0
                 });
@@ -292,42 +294,41 @@
                 });
             }
 
-            if (this.stores.structure.is("TYPE_SELECTED") && this.hiddenSchemas.indexOf(this.stores.structure
-                    .getSelectedSchema().id) === -1) {
-                let newSelectedSchema = this.stores.structure.getSelectedSchema();
-                let recenter = newSelectedSchema !== this.selectedSchema;
-                this.selectedSchema = newSelectedSchema;
+            const newSelectedType = this.stores.structure.is("SELECTED_TYPE") && this.stores.structure.getSelectedType();
+            if (newSelectedType && this.hiddenTypes.indexOf(newSelectedType.id) === -1) {
+                let recenter = newSelectedType !== this.selectedType;
+                this.selectedType = newSelectedType;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
-                this.svg.selectAll(".related-to_" + this.selectedSchema.hash).classed("selectedRelation", true);
-                this.svg.select(".is_" + this.selectedSchema.hash).classed("selectedNode", true);
+                this.svg.selectAll(".related-to_" + this.selectedType.hash).classed("selectedRelation", true);
+                this.svg.select(".is_" + this.selectedType.hash).classed("selectedNode", true);
                 if (recenter) {
                     let width = this.svg.node().getBoundingClientRect().width;
                     let height = this.svg.node().getBoundingClientRect().height;
                     let zoomScaleTo = 1.3;
                     this.svg.transition().duration(500)
-                        .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 - zoomScaleTo * this.selectedSchema
-                            .x, height / 2 - zoomScaleTo * this.selectedSchema.y).scale(zoomScaleTo));
+                        .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 - zoomScaleTo * this.selectedType
+                            .x, height / 2 - zoomScaleTo * this.selectedType.y).scale(zoomScaleTo));
                 }
             } else {
-                if (this.selectedSchema !== undefined) {
+                if (this.selectedType !== undefined) {
                     this.resetView();
                 }
-                this.selectedSchema = undefined;
+                this.selectedType = undefined;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            if (this.stores.structure.is("TYPE_HIGHLIGHTED") && this.hiddenSchemas.indexOf(this.stores.structure
-                    .getHighlightedSchema().id) === -1) {
-                this.highlightedSchema = this.stores.structure.getHighlightedSchema();
+            const newHighlightedType = this.stores.structure.is("TYPE_HIGHLIGHTED") && this.stores.structure.getHighlightedType();
+            if (newHighlightedType && this.hiddenTypes.indexOf(newHighlightedType.id) === -1) {
+                this.highlightedType = newHighlightedType;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
-                this.svg.selectAll(".related-to_" + this.highlightedSchema.hash).classed("highlightedRelation",
+                this.svg.selectAll(".related-to_" + this.highlightedType.hash).classed("highlightedRelation",
                     true);
-                this.svg.select(".is_" + this.highlightedSchema.hash).classed("highlightedNode", true);
+                this.svg.select(".is_" + this.highlightedType.hash).classed("highlightedNode", true);
             } else {
-                this.highlightedSchema = undefined;
+                this.highlightedType = undefined;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
             }
@@ -408,17 +409,17 @@
 
         this.firstDraw = () => {
             var self = this;
-            if(self.simulation) self.simulation.stop()
+            if (self.simulation) {
+                self.simulation.stop();
+            }
             this.svg = d3.select(this.refs.svg);
             
             var width = this.svg.node().getBoundingClientRect().width;
             var height = this.svg.node().getBoundingClientRect().height;
             
-
             // Create a container for the hulls
             // in order to draw the hulls (SVG) before/under the nodes
-            var hull = this.svg.append("g")
-                .attr("class", "hull_container");
+            var hull = this.svg.append("g").attr("class", "hull_container");
 
             this.view = this.svg.append("g").attr("class", "view");
 
@@ -437,10 +438,8 @@
 
             self.simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink()
-                    .id(function(d) { return d.id; })
-                    .distance( (d) => {
-                        return 40;
-                    })
+                    .id(d => d.id)
+                    .distance(d => 40)
                 )
                 .force('charge', d3.forceManyBody()
                     .distanceMin(10)
@@ -448,9 +447,7 @@
                     .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
-                    .radius((d) => {
-                        return nodeRscale(d.numberOfInstances) + 8;
-                    })
+                    .radius(d => nodeRscale(d.occurrences) + 8)
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
@@ -458,15 +455,15 @@
             // SVG path for hulls
             if (this.groupViewMode) {
                 paths = hull.selectAll('.hull')
-                    .data(groupIds, (d) => d )
+                    .data(groupIds, d => d )
                     .enter()
                     .append('g')
                     .attr('class', 'hull')
                     .append('path')
                     .style( 'fill-opacity', 0.3)
                     .style('stroke-width', 3)
-                    .style('stroke', (d) => self.color(d.key))
-                    .style('fill', (d) => self.color(d.key))
+                    .style('stroke', d => self.color(d.key))
+                    .style('fill', d => self.color(d.key))
                     .style('opacity', 0)
 
                 paths
@@ -477,20 +474,20 @@
                 // add interaction to the groups
                 hull.selectAll('.hull')
                     .call(d3.drag()
-                        .on('start', group_dragstarted)
+                        .on('start', groupDragStarted)
                         .on('drag', group_dragged)
-                        .on('end', group_dragended)
-                    ).on("mouseover", (d)=>{
+                        .on('end', groupDragEnded)
+                    ).on("mouseover", d => {
                         self.hullName = d.key
                         self.update()
                     })
-                    .on("mouseout", (d)=>{
+                    .on("mouseout", d => {
                         self.hullName = ""
                         self.update()
                     });
             }
         
-            restart()    
+            restart();
             
             this.zoom = d3.zoom()
                 .scaleExtent([0.1, 40])
@@ -510,30 +507,28 @@
             nodes.select('.node__label').attr("display", previousZoom >= 1 ? "" : "none");
 
             // Assigning data and behaviour to the different SVG elements
-            function restart(){
+            function restart() {
                 
                 links = linksg
                 .selectAll(".link-line")
                 .data(self.links)
                 .enter().append("line")
                 .attr("class", "link-line")
-                .each(function (d) {
-                    d3.select(this).classed("related-to_" + md5(d.source), true);
-                    d3.select(this).classed("related-to_" + md5(d.target), true);
+                .each(d => {
+                    d3.select(this).classed("related-to_" + d.sourceHash, true);
+                    d3.select(this).classed("related-to_" + d.targetHash, true);
                     d3.select(this).classed("provenance", d.provenance)
                 })
-                .attr("stroke-width", function (d) {
-                   return linkRscale(d.value);
-                })
-                .on("mouseover", (d) => {
-                    if(d.target_group == d.group){
-                        self.hullName = d.source_group
-                    }else{
-                        self.hullName = "from " + d.source_group + " to " + d.target_group
+                .attr("stroke-width", d => linkRscale(d.value))
+                .on("mouseover", d => {
+                    if (d.targetGroup == d.group){
+                        self.hullName = d.sourceGroup
+                    } else {
+                        self.hullName = "from " + d.sourceGroup + " to " + d.targetGroup
                     }
                     self.update()
                 })
-                .on("mouseout", (d) => {
+                .on("mouseout", d => {
                     self.hullName = ""
                     self.update()
                 })
@@ -543,7 +538,7 @@
                     .data(self.links)
                     .enter().append("g")
                     .attr("class", "link-node")
-                    .each(function(d){
+                    .each(d => {
                         let $this = d3.select(this);
 
                         circle = $this.append("circle");
@@ -557,19 +552,19 @@
                             .text(d.value);
                         $this.append("title").text(d.name);
 
-                        d3.select(this).classed("related-to_" + md5(d.source), true);
-                        d3.select(this).classed("related-to_" + md5(d.target), true);
+                        d3.select(this).classed("related-to_" + d.sourceHash, true);
+                        d3.select(this).classed("related-to_" + d.targetHash, true);
 
                     })
-                    .on("mouseover", (d) => {
-                        if(d.target_group == d.source_group){
-                            self.hullName = d.source_group
-                        }else{
-                            self.hullName = d.source_group + " <-> " + d.target_group
+                    .on("mouseover", d => {
+                        if (d.targetGroup == d.sourceGroup){
+                            self.hullName = d.sourceGroup
+                        } else {
+                            self.hullName = d.sourceGroup + " <-> " + d.targetGroup
                         }
                         self.update()
                     })
-                    .on("mouseout", (d) => {
+                    .on("mouseout", d => {
                         self.hullName = ""
                         self.update()
                     })
@@ -585,7 +580,7 @@
 
                         $this.append("circle")
                             .attr("class", "node__circle")
-                            .attr("r", (d)=> {return nodeRscale(d.numberOfInstances)})
+                            .attr("r", d => nodeRscale(d.occurrences))
                             .append('title').text(d.id);
 
                         $this.append("text")
@@ -594,14 +589,14 @@
                             .text(d.label);
 
                         $this.append("text")
-                            .attr("class", "node__nb-instance")
+                            .attr("class", "node__occurrences")
                             .attr("text-anchor", "middle")
-                            .text(d.numberOfInstances);
+                            .text(d.occurrences);
 
                         d3.select(this).classed("is_" + d.hash, true);
                         d3.select(this).classed("related-to_" + d.hash, true);
                         self.stores.structure.getRelationsOf(d.id).forEach(relation => {
-                            d3.select(this).classed("related-to_" + md5(relation.relatedSchema), true);
+                            d3.select(this).classed("related-to_" + relation.relatedTypeHash, true);
                         });
 
                     })
@@ -609,7 +604,7 @@
                         .on("start", dragstarted)
                         .on("drag", dragged)
                         .on("end", dragended))
-                    .on("mouseover", (d) => {
+                    .on("mouseover", d => {
                         self.view.selectAll(".node:not(.related-to_" + d.hash + "), .link-node:not(.related-to_" +
                                 d.hash +
                                 "), .link-line:not(.related-to_" + d.hash + ")")
@@ -617,13 +612,13 @@
                         self.hullName = d.group
                         self.update()
                     })
-                    .on("mouseout", (d) => {
+                    .on("mouseout", d => {
                         self.view.selectAll(".dephased").classed("dephased", false);
                         self.hullName = ""
                         self.update()
                     })
-                    .on("click", (d) => {
-                        RiotPolice.trigger("structure:schema_select", d);
+                    .on("click", d => {
+                        RiotPolice.trigger("structure:type_select", d);
                     })
 
                 //Start force simulation    
@@ -634,7 +629,7 @@
                 self.simulation.force("link")
                     .links(self.links);
             }
-
+            
             function ticked() {
                 
                 links
@@ -643,12 +638,9 @@
                     .attr("x2", d => d.target.x)
                     .attr("y2", d => d.target.y);
 
-                linknodes.select('.link-node__circle').attr("cx", (d) => {
-                        return d.x = (d.source.x + d.target.x) * 0.5;
-                    })
-                    .attr("cy", (d) => {
-                        return d.y = (d.source.y + d.target.y) * 0.5;
-                    });
+                linknodes.select('.link-node__circle')
+                    .attr("cx", d => d.x = (d.source.x + d.target.x) * 0.5)
+                    .attr("cy", d => d.y = (d.source.y + d.target.y) * 0.5);
 
                 linknodes.select('.link-node__text')
                     .attr("x", d => d.x)
@@ -662,14 +654,14 @@
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 12);
 
-                nodes.select('.node__nb-instance')
+                nodes.select('.node__occurrences')
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 4);
                 
                 //Regrouping nodes by private spaces
                 var coordMap = new Map();
-                nodes.each( (node) => {
-                    var coord = {x: node.x, y: node.y, numberOfInstances: node.numberOfInstances};
+                nodes.each(node => {
+                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
                     (coordMap[node.group] = coordMap[node.group] || []).push(coord)
                 });
 
@@ -685,10 +677,10 @@
                     var ty = 0;
                     var totalNumOfInstances = 0;
 
-                    groupNodes.forEach(function(d) {
+                    groupNodes.forEach(d => {
                         tx += d.x;
                         ty += d.y;
-                        totalNumOfInstances += d.numberOfInstances;
+                        totalNumOfInstances += d.occurrences;
                     })
 
                     cx = tx/n;
@@ -699,12 +691,12 @@
 
                 //Make the x-position equal to the x-position specified in the module positioning object or, if not in
                 //the hash, then set it to 250
-                var forceX = d3.forceX(function (d) {return centroids[d.group] ? centroids[d.group].x : width / 2})
+                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
                     .strength(0.3)
 
                 //Same for forceY--these act as a gravity parameter so the different strength determines how closely
                 //the individual nodes are pulled to the center of their module position
-                var forceY = d3.forceY(function (d) {return centroids[d.group] ? centroids[d.group].y : height / 2})
+                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
                     .strength(0.3)
 
                 self.simulation
@@ -732,7 +724,6 @@
                 d.fx = null;
                 d.fy = null;
             }
-
             
             function zoomed() {
                 var currentZoom = d3.event.transform.k;
@@ -748,12 +739,12 @@
             
             function updateGroups() {
                 
-                groupIds.forEach((n) => {
-                    var path = paths.filter((d) => { return d.key == n.key;})
+                groupIds.forEach(n => {
+                    var path = paths.filter(d => d.key == n.key)
                     .attr('transform', 'scale(1) translate(0,0)')
-                    .attr('d', (d) => {
+                    .attr('d', d => {
                         var node_coords = nodes
-                            .filter((d) => { return d.group == n.key; })
+                            .filter(d => d.group == n.key)
 
                         // to scale the shape properly around its points:
                         // move the 'g' element to the centroid point, translate
@@ -762,39 +753,28 @@
                         // we can scale the 'g' element properly
 
                         
-                        if(node_coords.nodes().length == 1){
+                        if (node_coords.nodes().length == 1){
                             //If there is only one node we draw a circle around it
                             polygon = node_coords.data().map( (i) => { return [i.x, i.y]})      
                             centroid = polygon[0]
-                            return circle(n.values[0].numberOfInstances)
+                            return circle(n.values[0].occurrences)
 
-                        }else if(node_coords.nodes().length == 2){
+                        } else if (node_coords.nodes().length == 2){
                             //If there are two nodes we extrapolate two other points in order to create a polygon
-                            var arr = node_coords.data().map((i) => {
-                                return [
-                                    i.x, i.y  
-                                ];
-                            })
+                            const arr = node_coords.data().map(i => [i.x, i.y]);
                             arr.push([arr[0][0], arr[1][1]])
                             arr.push([arr[1][0], arr[0][1]])
                             polygon = d3.polygonHull(arr);
                             centroid = [(polygon[0][0] + polygon[1][0])/2,(polygon[0][1]+ polygon[1][1])/2]
                             return valueline(
-                                polygon.map((point) => {
-                                    return [  point[0] - centroid[0], point[1] - centroid[1] ];
-                                })
+                                polygon.map(point => [  point[0] - centroid[0], point[1] - centroid[1] ])
                             );
-                        }else{
-                            node_coords = node_coords.data()
-                                .map((d) => { 
-                                    return [d.x, d.y]; 
-                                });
+                        } else {
+                            node_coords = node_coords.data().map(d => [d.x, d.y]);
                             polygon = d3.polygonHull(node_coords);         
                             centroid = d3.polygonCentroid(polygon);
                             return valueline(
-                                polygon.map((point) => {
-                                    return [  point[0] - centroid[0], point[1] - centroid[1] ];
-                                })
+                                polygon.map(point => [ point[0] - centroid[0], point[1] - centroid[1] ])
                             );
                         }
 
@@ -806,44 +786,46 @@
 
             //Return the svg path for a circle
             //We only specify a m (moveTo) relative, because the absolute position of the circle will be set in the updateGroups function
-            var circle = (size) => {
-                radius = getRadius(size)
-                var path =  "m " + (-radius) + ",0 a " + radius+","+radius+" 0 1, 0 " +(radius*2)+",0" +" a " + radius+","+radius+" 0 1 ,0 " +(-radius*2)+",0"
-                return path
-            }
-            var getRadius = (size) => {
-                if(size < circleOpts.minRadius){
+            const circle = size => {
+                const radius = getRadius(size);
+                var path =  "m " + (-radius) + ",0 a " + radius+","+radius+" 0 1, 0 " +(radius*2)+",0" +" a " + radius+","+radius+" 0 1 ,0 " +(-radius*2)+",0";
+                return path;
+            };
+
+            const getRadius = size => {
+                if (size < circleOpts.minRadius){
                     return circleOpts.minRadius
-                }else if(size > circleOpts.maxRadius){
+                } else if (size > circleOpts.maxRadius){
                     return circleOpts.maxRadius
                 }
-                return size
-            }
+                return size;
+            };
+
             // drag groups
-            function group_dragstarted(groupId) {
+            function groupDragStarted(groupId) {
                 if (!d3.event.active) self.simulation.alphaTarget(0.3).restart();
                 d3.select(this).select('path').style('stroke-width', 3);
             }
 
             function group_dragged(groupId) {
                 nodes
-                    .filter((d) => { return d.group == groupId.key; })
-                    .each((d) => {
+                    .filter(d => d.group == groupId.key)
+                    .each(d => {
                         d.x += d3.event.dx;
                         d.y += d3.event.dy;
                     })
             }
 
-            function group_dragended(groupId) {
+            function groupDragEnded(groupId) {
                 if (!d3.event.active) self.simulation.alphaTarget(0.3).restart();
                 d3.select(this).select('path').style('stroke-width', 1);
             }
 
             //Returns an svg path for the hull 
             var valueline = d3.line()
-                .x((d) => d[0])
-                .y((d) => d[1])
-                .curve(d3.curveCatmullRomClosed)
+                .x(d => d[0])
+                .y(d => d[1])
+                .curve(d3.curveCatmullRomClosed);
        
         };
     </script>

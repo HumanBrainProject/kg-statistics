@@ -60,7 +60,7 @@
             padding:0 4px;
         }
 
-        .schemas{
+        .types{
             margin-top: 15px;
             max-height:calc(100% - 45px);
             overflow-y:auto;
@@ -77,7 +77,7 @@
             line-height: 1;
         }
 
-        .numberOfInstances {
+        .occurrences {
             background-color: #444;
             display: inline-block;   
             min-width: 21px;
@@ -150,7 +150,7 @@
                 <a class={"disabled": space.hidden} href="#" onclick={toggleHide} onmouseover={highlightSpace} onmouseout={unhighlightSpace}>
                     {space.name}
                 </a>
-                <span class="numberOfInstances">{space.length}</span>
+                <span class="occurrences">{space.length}</span>
             </li>
         </ul>
     </div>

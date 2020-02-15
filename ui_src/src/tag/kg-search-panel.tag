@@ -78,7 +78,7 @@
             line-height: 1;
         }
 
-        .numberOfInstances {
+        .occurrences {
             background-color: #444;
             display: inline-block;   
             min-width: 21px;
@@ -114,8 +114,8 @@
         </div>
         <ul>
             <li each={result in results}>
-                <a class={"disabled": hiddenSchemas.indexOf(result.id) !== -1} href="#" onclick={selectResult} onmouseover={highlightSchema} onmouseout={unhighlightSchema}>{result.id}</a>
-                <span class="numberOfInstances">{result.numberOfInstances}</span>
+                <a class={"disabled": hiddenTypes.indexOf(result.id) !== -1} href="#" onclick={selectResult} onmouseover={highlightType} onmouseout={unhighlightType}>{result.id}</a>
+                <span class="occurrences">{result.occurrences}</span>
             </li>
         </ul>
     </div>
@@ -127,7 +127,7 @@
     <script>
         this.query = "";
         this.results = [];
-        this.hiddenSchemas = [];
+        this.hiddenTypes = [];
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
@@ -135,9 +135,9 @@
         });
 
         this.on("update", function () {
-            this.results = _.orderBy(this.stores.structure.getSearchResults(), result => result.numberOfInstances,'desc');
+            this.results = _.orderBy(this.stores.structure.getSearchResults(), result => result.occurrences,'desc');
             this.query = this.stores.structure.getSearchQuery();
-            this.hiddenSchemas = this.stores.structure.getHiddenSchemas();
+            this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
             if(this.stores.structure.is("SEARCH_ACTIVE")){
                 if(!$(this.root).hasClass("open")){
@@ -151,24 +151,24 @@
             }
         });
 
-        this.togglePanel = function(){
+        this.togglePanel = () => {
             RiotPolice.trigger("structure:search_toggle");
-        }
+        };
 
-        this.doSearch = function () {
+        this.doSearch = () => {
             RiotPolice.trigger("structure:search", this.refs.query.value);
-        }
+        };
 
-        this.selectResult = function(e){
-            RiotPolice.trigger("structure:schema_select", e.item.result.id);
-        }
+        this.selectResult = e => {
+            RiotPolice.trigger("structure:type_select", e.item.result);
+        };
 
-        this.highlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_highlight", e.item.result.id);
-        }
+        this.highlightType = e => {
+            RiotPolice.trigger("structure:type_highlight", e.item.result);
+        };
         
-        this.unhighlightSchema = function(e){
-            RiotPolice.trigger("structure:schema_unhighlight");
-        }
+        this.unhighlightType = e => {
+            RiotPolice.trigger("structure:type_unhighlight");
+        };
     </script>
 </kg-search-panel>
