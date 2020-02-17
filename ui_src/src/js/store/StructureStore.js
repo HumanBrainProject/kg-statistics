@@ -517,14 +517,13 @@
         highlightedNode = undefined;
         structureStore.toggleState("SELECTED_NODE", false);
         selectedNode = undefined;
-
-        structure.nodes.forEach(node => { node.hidden = !!hide });
-        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
+        defaultViewModeNodes.forEach(node => { node.hidden = !!hide });
+        hiddenTypes = _(defaultViewModeNodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
         if (!hide) {
             hiddenSpaces = [];
         } else {
-            hiddenSpaces = Object.keys(getGroups(structure.nodes));
+            hiddenSpaces = Object.keys(getGroups(defaultViewModeNodes));
         }
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();

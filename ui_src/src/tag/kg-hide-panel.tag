@@ -149,9 +149,9 @@
         <ul>
             <li each={node in nodes}>
                 <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightNode} onmouseout={unhighlightNode}>
-                    {node.id}
+                    {node.data.id}
                 </a>
-                <span class="occurrences">{node.occurrences}</span>
+                <span class="occurrences">{node.data.occurrences}</span>
             </li>
         </ul>
     </div>

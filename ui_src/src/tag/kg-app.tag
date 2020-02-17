@@ -227,7 +227,7 @@
         <kg-topbar></kg-topbar>
         <kg-body if={isLoaded}></kg-body>
         <kg-hide-panel if={isLoaded}></kg-hide-panel>
-        <kg-hide-spaces-panel if={isLoaded}></kg-hide-spaces-panel>
+        <kg-hide-spaces-panel if={isLoaded && groupViewMode}></kg-hide-spaces-panel>
         <kg-search-panel if={isLoaded}></kg-search-panel>
         <kg-sidebar if={isLoaded}></kg-sidebar>
         <div class="loading-panel {show: isLoading}">
@@ -248,6 +248,7 @@
         this.hasError = false;
         this.isLoading = false;
         this.isLoaded = false;
+        this.groupViewMode = false;
 
         this.on("mount", function () {
             RiotPolice.requestStore("structure", this);
@@ -259,6 +260,7 @@
             this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
             this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
             this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
+            this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
         });
 
         this.retry = e => RiotPolice.trigger("structure:load");

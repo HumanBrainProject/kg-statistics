@@ -196,7 +196,7 @@
     <div class="types" if={typesWithoutRelations.length}>Type(s) without visible relation:
         <ul>
             <li each={type in typesWithoutRelations}>
-                <a href="#" onmouseover={highlightNode} onmouseout={unhighlightNode} onclick={selectNode}>{type.id}</a>
+                <a href="#" onmouseover={highlightNode} onmouseout={unhighlightNode} onclick={selectNode}>{type.data.id}</a>
             </li>
         </ul>
     </div>
