@@ -160,15 +160,15 @@
         };
 
         this.selectResult = e => {
-            RiotPolice.trigger("structure:type_select", e.item.result);
+            RiotPolice.trigger("structure:node_select", e.item.result);
         };
 
         this.highlightType = e => {
-            RiotPolice.trigger("structure:type_highlight", e.item.result);
+            RiotPolice.trigger("structure:node_highlight", e.item.result);
         };
         
         this.unhighlightType = e => {
-            RiotPolice.trigger("structure:type_unhighlight");
+            RiotPolice.trigger("structure:node_unhighlight");
         };
     </script>
 </kg-search-panel>

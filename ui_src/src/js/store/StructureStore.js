@@ -16,6 +16,7 @@
 
 (function () {
     let types = {};
+    let selectedType = null;
     let defaultViewModeNodes = [];
     let defaultViewModeLinks = [];
     let defaultViewModeRelations = [];
@@ -26,8 +27,8 @@
     let groupViewMode = false;
     let hiddenTypes = [];
     let hiddenSpaces = [];
-    let selectedType;
-    let highlightedType;
+    let selectedNode;
+    let highlightedNode;
     let searchQuery = "";
     let searchResults = [];
     let minNodeCounts = 6;
@@ -350,7 +351,7 @@
                 fetch(`/api/typesByName?stage=LIVE&withProperties=true&name=${type.id}`)
                     .then(response => response.json())
                     .then(data => {
-                        const definition = simplifyTypeSemantics(data.data);
+                        const definition = simplifySemantics(data.data);
                         type.properties = definition.properties.sort((a, b) => b.occurrences - a.occurrences);
                         type.isLoaded = true;
                         type.isLoading = false;
@@ -398,7 +399,8 @@
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
-            "SELECTED_TYPE", "TYPE_HIGHLIGHTED", "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
+            "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
+            "SELECTED_NODE", "NODE_HIGHLIGHTED",
             "GROUP_VIEW_MODE", "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
         ],
         init, reset);
@@ -416,38 +418,34 @@
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:type_select", type => {
-        if (typeof type === "string") {
-            type = _.find(structure.nodes, node => node.id === type);
-        }
-        if (type !== selectedType || type === undefined) {
-            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
-            highlightedType = undefined;
-            structureStore.toggleState("SELECTED_TYPE", !!type);
+    structureStore.addAction("structure:node_select", node => {
+        if (node !== selectedNode || node === undefined) {
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            highlightedNode = undefined;
+            structureStore.toggleState("SELECTED_NODE", !!node);
             structureStore.toggleState("SEARCH_ACTIVE", false);
-            loadType(type.data);
-            selectedType = type;
+            selectedType = types[node.data.id];
+            loadType(selectedType);
+            selectedNode = node;
         } else {
-            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
-            highlightedType = undefined;
-            structureStore.toggleState("SELECTED_TYPE", false);
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            highlightedNode = undefined;
+            structureStore.toggleState("SELECTED_NODE", false);
+            selectedNode = undefined;
             selectedType = undefined;
         }
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:type_highlight", type => {
-        if (typeof type === "string") {
-            type = _.find(structure.nodes, node => node.id === type);
-        }
-        structureStore.toggleState("TYPE_HIGHLIGHTED", !!type);
-        highlightedType = type;
+    structureStore.addAction("structure:node_highlight", node => {
+        structureStore.toggleState("NODE_HIGHLIGHTED", !!node);
+        highlightedNode = node;
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:type_unhighlight", () => {
-        structureStore.toggleState("TYPE_HIGHLIGHTED", false);
-        highlightedType = undefined;
+    structureStore.addAction("structure:node_unhighlight", () => {
+        structureStore.toggleState("NODE_HIGHLIGHTED", false);
+        highlightedNode = undefined;
         structureStore.notifyChange();
     });
 
@@ -480,11 +478,11 @@
         if (typeof type === "string") {
             type = _.find(structure.nodes, node => node.id === type);
         }
-        if (type !== undefined && type === selectedType) {
-            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
-            highlightedType = undefined;
-            structureStore.toggleState("SELECTED_TYPE", false);
-            selectedType = undefined;
+        if (type !== undefined && type === selectedNode) {
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            highlightedNode = undefined;
+            structureStore.toggleState("SELECTED_NODE", false);
+            selectedNode = undefined;
         }
         type.hidden = !type.hidden;
         hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
@@ -515,10 +513,10 @@
     });
 
     structureStore.addAction("structure:all_types_toggle_hide", hide => {
-        structureStore.toggleState("TYPE_HIGHLIGHTED", false);
-        highlightedType = undefined;
-        structureStore.toggleState("SELECTED_TYPE", false);
-        selectedType = undefined;
+        structureStore.toggleState("NODE_HIGHLIGHTED", false);
+        highlightedNode = undefined;
+        structureStore.toggleState("SELECTED_NODE", false);
+        selectedNode = undefined;
 
         structure.nodes.forEach(node => { node.hidden = !!hide });
         hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
@@ -560,7 +558,9 @@
 
     structureStore.addInterface("getSelectedType", () => selectedType);
 
-    structureStore.addInterface("getHighlightedType", () => highlightedType);
+    structureStore.addInterface("getSelectedNode", () => selectedNode);
+
+    structureStore.addInterface("getHighlightedNode", () => highlightedNode);
 
     structureStore.addInterface("getTypes", getTypes);
 

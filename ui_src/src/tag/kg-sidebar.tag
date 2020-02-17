@@ -188,7 +188,7 @@
             </div>
             <ul>
                 <li each={relation in sortedRelations}>
-                    <a class={disabled:hiddenTypes.indexOf(relation.relationId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightType} onclick={selectRelation}>{relation.relationId}</a><span class="occurrences">{relation.relationCount}</span>
+                    <a class={disabled:hiddenTypes.indexOf(relation.relationId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation}>{relation.relationId}</a><span class="occurrences">{relation.relationCount}</span>
                 </li>
             </ul>
         </div>
@@ -196,7 +196,7 @@
     <div class="types" if={typesWithoutRelations.length}>Type(s) without visible relation:
         <ul>
             <li each={type in typesWithoutRelations}>
-                <a href="#" onmouseover={highlightType} onmouseout={unhighlightType} onclick={selectType}>{type.id}</a>
+                <a href="#" onmouseover={highlightNode} onmouseout={unhighlightNode} onclick={selectNode}>{type.id}</a>
             </li>
         </ul>
     </div>
@@ -228,41 +228,40 @@
                 }
             });
 
-            const selectedType = this.stores.structure.is("SELECTED_TYPE") && this.stores.structure.getSelectedType();
-            if(!selectedType){
+            this.selectedType = this.stores.structure.getSelectedType();
+            if(!this.selectedType){
                 return;
             }
-            this.selectedType = selectedType.data;
           
-            this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedType.id), o => o.relationCount, 'desc');
+            this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedType.id), o => o.value, 'desc');
         });
 
         this.close = function(e){
-            RiotPolice.trigger("structure:type_select", this.selectedType);
+            RiotPolice.trigger("structure:node_select", this.selectedType);
         }
         this.toggleHide = function(e){
             RiotPolice.trigger("structure:type_toggle_hide", this.selectedType);
         }
-        this.selectType = function(e){
-            if (!this.selectedType || this.selectedType.id !==  e.item.type.id)
-                RiotPolice.trigger("structure:type_select", e.item.type);
+        this.selectNode = function(e){
+            if (!this.selectedType || this.selectedType.id !==  e.item)
+                RiotPolice.trigger("structure:node_select", e.item);
         }
-        this.highlightType = function(e){
-            RiotPolice.trigger("structure:type_highlight", e.item.type);
+        this.highlightNode = function(e){
+            RiotPolice.trigger("structure:node_highlight", e.item);
         }
-        this.unhighlightType = function(e){
-            RiotPolice.trigger("structure:type_unhighlight");
+        this.unhighlightNode = function(e){
+            RiotPolice.trigger("structure:node_unhighlight");
         }
 
         this.selectRelation = function(e){
-            RiotPolice.trigger("structure:type_select", e.item.relation.relationId);
+            RiotPolice.trigger("structure:node_select", e.item.relation.relationId);
         }
         this.highlightRelation = function(e){
-            RiotPolice.trigger("structure:type_highlight", e.item.relation.relationId);
+            RiotPolice.trigger("structure:node_highlight", e.item.relation.relationId);
         }
 
-        this.unhighlightType = function(e){
-            RiotPolice.trigger("structure:type_unhighlight");
+        this.unhighlightNode = function(e){
+            RiotPolice.trigger("structure:node_unhighlight");
         }
     </script>
 </kg-sidebar>

@@ -148,7 +148,7 @@
     <div class="nodelist">
         <ul>
             <li each={node in nodes}>
-                <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightType} onmouseout={unhighlightType}>
+                <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightNode} onmouseout={unhighlightNode}>
                     {node.id}
                 </a>
                 <span class="occurrences">{node.occurrences}</span>
@@ -194,11 +194,11 @@
         this.showAll = function(){
             RiotPolice.trigger("structure:all_types_toggle_hide", false);
         }
-        this.highlightType = function(e){
-            RiotPolice.trigger("structure:type_highlight", e.item.node);
+        this.highlightNode = function(e){
+            RiotPolice.trigger("structure:node_highlight", e.item.node);
         }
-        this.unhighlightType = function(e){
-            RiotPolice.trigger("structure:type_unhighlight");
+        this.unhighlightNode = function(e){
+            RiotPolice.trigger("structure:node_unhighlight");
         }
     </script>
 </kg-hide-panel>

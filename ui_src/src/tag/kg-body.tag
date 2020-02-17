@@ -294,40 +294,40 @@
                 });
             }
 
-            const newSelectedType = this.stores.structure.is("SELECTED_TYPE") && this.stores.structure.getSelectedType();
-            if (newSelectedType && this.hiddenTypes.indexOf(newSelectedType.id) === -1) {
-                let recenter = newSelectedType !== this.selectedType;
-                this.selectedType = newSelectedType;
+            const newSelectedNode = this.stores.structure.is("SELECTED_NODE") && this.stores.structure.getSelectedNode();
+            if (newSelectedNode && this.hiddenTypes.indexOf(newSelectedNode.id) === -1) {
+                let recenter = newSelectedNode !== this.selectedNode;
+                this.selectedNode = newSelectedNode;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
-                this.svg.selectAll(".related-to_" + this.selectedType.hash).classed("selectedRelation", true);
-                this.svg.select(".is_" + this.selectedType.hash).classed("selectedNode", true);
+                this.svg.selectAll(".related-to_" + this.selectedNode.hash).classed("selectedRelation", true);
+                this.svg.select(".is_" + this.selectedNode.hash).classed("selectedNode", true);
                 if (recenter) {
                     let width = this.svg.node().getBoundingClientRect().width;
                     let height = this.svg.node().getBoundingClientRect().height;
                     let zoomScaleTo = 1.3;
                     this.svg.transition().duration(500)
-                        .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 - zoomScaleTo * this.selectedType
-                            .x, height / 2 - zoomScaleTo * this.selectedType.y).scale(zoomScaleTo));
+                        .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 - zoomScaleTo * this.selectedNode
+                            .x, height / 2 - zoomScaleTo * this.selectedNode.y).scale(zoomScaleTo));
                 }
             } else {
-                if (this.selectedType !== undefined) {
+                if (this.selectedNode !== undefined) {
                     this.resetView();
                 }
-                this.selectedType = undefined;
+                this.selectedNode = undefined;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            const newHighlightedType = this.stores.structure.is("TYPE_HIGHLIGHTED") && this.stores.structure.getHighlightedType();
-            if (newHighlightedType && this.hiddenTypes.indexOf(newHighlightedType.id) === -1) {
-                this.highlightedType = newHighlightedType;
+            const newHighlightedNode = this.stores.structure.is("NODE_HIGHLIGHTED") && this.stores.structure.getHighlightedNode();
+            if (newHighlightedNode && this.hiddenTypes.indexOf(newHighlightedNode.id) === -1) {
+                this.highlightedNode = newHighlightedNode;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
-                this.svg.selectAll(".related-to_" + this.highlightedType.hash).classed("highlightedRelation", true);
-                this.svg.select(".is_" + this.highlightedType.hash).classed("highlightedNode", true);
+                this.svg.selectAll(".related-to_" + this.highlightedNode.hash).classed("highlightedRelation", true);
+                this.svg.select(".is-type_" + this.highlightedNode.typeHash).classed("highlightedNode", true);
             } else {
-                this.highlightedType = undefined;
+                this.highlightedNode = undefined;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
             }
@@ -336,7 +336,7 @@
             if (this.stores.structure.is("SEARCH_ACTIVE")) {
                 this.searchResults = this.stores.structure.getSearchResults();
                 this.searchResults.forEach(node => {
-                    this.svg.selectAll(".is_" + node.typeHash).classed("searchResult", true);
+                    this.svg.selectAll(".is-type_" + node.typeHash).classed("searchResult", true);
                 });
             } else {
                 this.searchResults = [];
@@ -619,7 +619,7 @@
                         self.update()
                     })
                     .on("click", d => {
-                        RiotPolice.trigger("structure:type_select", d);
+                        RiotPolice.trigger("structure:node_select", d);
                     })
 
                 //Start force simulation    
