@@ -114,8 +114,8 @@
         </div>
         <ul>
             <li each={result in results}>
-                <a class={"disabled": hiddenTypes.indexOf(result.id) !== -1} href="#" onclick={selectResult} onmouseover={highlightType} onmouseout={unhighlightType}>{result.id}</a>
-                <span class="occurrences">{result.occurrences}</span>
+                <a class={"disabled": hiddenTypes.indexOf(result.id) !== -1} href="#" onclick={selectResult} onmouseover={highlightType} onmouseout={unhighlightType}>{result.data.id}</a>
+                <span class="occurrences">{result.data.occurrences}</span>
             </li>
         </ul>
     </div>

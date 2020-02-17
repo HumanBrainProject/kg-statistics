@@ -232,7 +232,7 @@
             if(!selectedType){
                 return;
             }
-            this.selectedType = selectedType.parent;
+            this.selectedType = selectedType.data;
           
             this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedType.id), o => o.relationCount, 'desc');
         });
