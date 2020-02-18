@@ -86,8 +86,8 @@
         }
 
         kg-search-panel,
-        kg-hide-panel,
-        kg-hide-spaces-panel{
+        kg-types-panel,
+        kg-spaces-panel{
             position:absolute;
             width:var(--search-panel-width);
             height:calc(100vh - var(--topbar-height) - 50px);
@@ -226,8 +226,8 @@
     <div class="kg-app-container ">
         <kg-topbar></kg-topbar>
         <kg-body if={isLoaded}></kg-body>
-        <kg-hide-panel if={isLoaded}></kg-hide-panel>
-        <kg-hide-spaces-panel if={isLoaded && groupViewMode}></kg-hide-spaces-panel>
+        <kg-types-panel if={isLoaded}></kg-types-panel>
+        <kg-spaces-panel if={isLoaded && groupViewMode}></kg-spaces-panel>
         <kg-search-panel if={isLoaded}></kg-search-panel>
         <kg-sidebar if={isLoaded}></kg-sidebar>
         <div class="loading-panel {show: isLoading}">
@@ -250,13 +250,18 @@
         this.isLoaded = false;
         this.groupViewMode = false;
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
             RiotPolice.trigger("structure:load");
         });
 
-        this.on("update", function () {
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
             this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
             this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");

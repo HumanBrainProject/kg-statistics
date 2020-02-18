@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-hide-panel>
+<kg-types-panel>
     <style scoped>
          :scope.open {
             right: var(--sidebar-width);
@@ -149,9 +149,9 @@
         <ul>
             <li each={node in nodes}>
                 <a class={"disabled": node.hidden} href="#" onclick={toggleHide} onmouseover={highlightNode} onmouseout={unhighlightNode}>
-                    {node.data.id}
+                    {node.type.id}
                 </a>
-                <span class="occurrences">{node.data.occurrences}</span>
+                <span class="occurrences">{node.type.occurrences}</span>
             </li>
         </ul>
     </div>
@@ -161,16 +161,21 @@
         this.results = [];
         this.hiddenTypes = [];
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
 
-        this.on("update", function () {
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             this.nodes = _.orderBy(this.stores.structure.getNodes(), 'occurrences', 'desc');
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
-            if(this.stores.structure.is("HIDE_ACTIVE")){
+            if(this.stores.structure.is("SHOW_TYPES_PANEL")){
                 if(!$(this.root).hasClass("open")){
                     $(this.root).addClass("open");
                     $(this.refs.query).focus();
@@ -182,23 +187,23 @@
             }
         });
 
-        this.togglePanel = function(){
-            RiotPolice.trigger("structure:hide_toggle");
+        this.togglePanel = () => {
+            RiotPolice.trigger("structure:types_panel_toggle");
         }
-        this.toggleHide = function(e){
+        this.toggleHide = e => {
             RiotPolice.trigger("structure:type_toggle_hide", e.item.node);
         }
-        this.hideAll = function(){
+        this.hideAll = () => {
             RiotPolice.trigger("structure:all_types_toggle_hide", true);
         }
-        this.showAll = function(){
+        this.showAll = () => {
             RiotPolice.trigger("structure:all_types_toggle_hide", false);
         }
-        this.highlightNode = function(e){
+        this.highlightNode = e => {
             RiotPolice.trigger("structure:node_highlight", e.item.node);
         }
-        this.unhighlightNode = function(e){
+        this.unhighlightNode = e => {
             RiotPolice.trigger("structure:node_unhighlight");
         }
     </script>
-</kg-hide-panel>
+</kg-types-panel>

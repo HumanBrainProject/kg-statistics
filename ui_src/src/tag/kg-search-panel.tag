@@ -129,17 +129,22 @@
         this.results = [];
         this.hiddenTypes = [];
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
 
-        this.on("update", function () {
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             this.results = _.orderBy(this.stores.structure.getSearchResults(), result => result.occurrences,'desc');
             this.query = this.stores.structure.getSearchQuery();
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
-            if(this.stores.structure.is("SEARCH_ACTIVE")){
+            if(this.stores.structure.is("SHOW_SEARCH_PANEL")){
                 if(!$(this.root).hasClass("open")){
                     $(this.root).addClass("open");
                     $(this.refs.query).focus();
@@ -152,7 +157,7 @@
         });
 
         this.togglePanel = () => {
-            RiotPolice.trigger("structure:search_toggle");
+            RiotPolice.trigger("structure:search_panel_toggle");
         };
 
         this.doSearch = () => {

@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-hide-spaces-panel>
+<kg-spaces-panel>
     <style scoped>
          :scope.open {
             right: var(--sidebar-width);
@@ -176,12 +176,17 @@
         }
         
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
 
-        this.on("update", function () {
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             let spacesMap = groupBy(this.stores.structure.getNodes(), (node) => {return node.group});
             this.hiddenSpaces = this.stores.structure.getHiddenSpaces();
             let mapIt = spacesMap[Symbol.iterator]();
@@ -190,7 +195,7 @@
                 let hidden = this.hiddenSpaces.includes(item[0])
                 this.spaces.push({name: item[0], length: item[1].length, hidden: hidden})
             }
-            if(this.stores.structure.is("HIDE_SPACES_ACTIVE")){
+            if(this.stores.structure.is("SHOW_SPACES_PANEL")){
                 if(!$(this.root).hasClass("open")){
                     $(this.root).addClass("open");
                     $(this.refs.query).focus();
@@ -202,15 +207,15 @@
             }
         });
 
-        this.togglePanel = function(){
-            RiotPolice.trigger("structure:hide_spaces_toggle");
+        this.togglePanel = () => {
+            RiotPolice.trigger("structure:spaces_panel_toggle");
         }
-        this.toggleHide = function(e){
+        this.toggleHide = e => {
             RiotPolice.trigger("structure:space_toggle_hide", e.item.space.name);
         }
-        this.showAll = function(){
+        this.showAll = () => {
             RiotPolice.trigger("structure:all_spaces_show");
         }
 
     </script>
-</kg-hide-spaces-panel>
+</kg-spaces-panel>

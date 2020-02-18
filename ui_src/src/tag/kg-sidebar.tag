@@ -73,10 +73,26 @@
             font-size:0.8em;
             padding-left:18px;
         }
+
+        ul ul {
+            font-size: 1em;
+        }
+
+        ul.links {
+            list-style-type: none;
+            padding-left: 5px;
+        }
+
         li{
             padding: 3px 0;
             line-height:1;
             position:relative;
+        }
+        ul.links > li {
+            margin-right: 3px;
+        }
+        ul.links > li > i.fa:before {
+            margin-right: 5px;
         }
         .occurrences {
             background-color: #444;
@@ -93,11 +109,6 @@
         .disabled{
             text-decoration: line-through;
             color:#aaa;
-        }
-        .separator {
-            border-bottom: 1px solid white;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
         }
         .actions{
             position:absolute;
@@ -164,12 +175,12 @@
         }
     </style>
 
-    <div if={selectedType} class={separator: selectedType && typesWithoutRelations.length}>
+    <div if={selectedType}>
         <div class="actions">
             <button title="Close this view" class="close" onclick={close}><i class="fa fa-close"></i></button>
             <button title="Hide the corresponding node" class="hide" onclick={toggleHide}><i class="fa {selectedType.hidden?'fa-eye':'fa-eye-slash'}"></i></button>
         </div>
-        <div class="title">{selectedType.id}</div>
+        <div class="title" title={selectedType.id}>{selectedType.name}</div>
         <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div>
         <div class="properties">Properties:
             <ul>
@@ -179,26 +190,26 @@
                     <div if={property.instancesWithoutProp} class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedType.occurrences*100)}% ({selectedType.occurrences-property.instancesWithoutProp})</div>
                     <div if={!property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:100%"></div>
                     <div if={!property.instancesWithoutProp} class="number-instances-wo-prop">100%</div>
+                    <div if={property.targetTypes.length}>
+                        <ul class="links">
+                            <li each={targetType in property.targetTypes}>
+                                <i class="fa fa-long-arrow-right"><a class={disabled:hiddenTypes.indexOf(targetType.id) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={targetType.id}>{targetType.name}</a><span class="occurrences">{targetType.occurrences}</span>
+                            </li>
+                        </ul>
+                    </div>
                 </li>
             </ul>
         </div>
         <div class="relations">Relations:
-            <div class="norelations" if={!sortedRelations.length}>
+            <div class="norelations" if={!selectedType.relations.length}>
                 No relations found
             </div>
-            <ul>
-                <li each={relation in sortedRelations}>
-                    <a class={disabled:hiddenTypes.indexOf(relation.relationId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation}>{relation.relationId}</a><span class="occurrences">{relation.relationCount}</span>
+            <ul class="links">
+                <li each={relation in selectedType.relations}>
+                    <i class="fa fa-long-arrow-right"><a class={disabled:hiddenTypes.indexOf(relation.targetId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={relation.targetId}>{relation.targetName}</a><span class="occurrences">{relation.occurrences}</span>
                 </li>
             </ul>
         </div>
-    </div>
-    <div class="types" if={typesWithoutRelations.length}>Type(s) without visible relation:
-        <ul>
-            <li each={type in typesWithoutRelations}>
-                <a href="#" onmouseover={highlightNode} onmouseout={unhighlightNode} onclick={selectNode}>{type.data.id}</a>
-            </li>
-        </ul>
     </div>
 
     <script>
@@ -206,62 +217,59 @@
         this.typesWithoutRelations = [];
         this.hiddenTypes = [];
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
         });
 
-        this.on("unmount", function(){
+        this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
         });
 
-        this.on("update", function () {
-            var self = this;
+        this.on("update", () => {
             this.nodes = this.stores.structure.getNodes();
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
             this.typesWithoutRelations = [];
             this.nodes.forEach(n => {
-                if (!n.hidden && !self.stores.structure.hasRelations(n.id, true)){
-                    self.typesWithoutRelations.push(n);
+                if (!n.hidden && !this.stores.structure.hasRelations(n.id, true)){
+                    this.typesWithoutRelations.push(n);
                 }
             });
-
             this.selectedType = this.stores.structure.getSelectedType();
             if(!this.selectedType){
                 return;
             }
-          
-            this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedType.id), o => o.value, 'desc');
         });
 
-        this.close = function(e){
+        this.close = e => {
             RiotPolice.trigger("structure:node_select", this.selectedType);
         }
-        this.toggleHide = function(e){
+        this.toggleHide = e => {
             RiotPolice.trigger("structure:type_toggle_hide", this.selectedType);
         }
-        this.selectNode = function(e){
+        this.selectNode = e => {
             if (!this.selectedType || this.selectedType.id !==  e.item)
                 RiotPolice.trigger("structure:node_select", e.item);
         }
-        this.highlightNode = function(e){
+        this.highlightNode = e => {
             RiotPolice.trigger("structure:node_highlight", e.item);
         }
-        this.unhighlightNode = function(e){
+        this.unhighlightNode = e => {
             RiotPolice.trigger("structure:node_unhighlight");
         }
 
-        this.selectRelation = function(e){
-            RiotPolice.trigger("structure:node_select", e.item.relation.relationId);
+        this.selectRelation = e => {
+            RiotPolice.trigger("structure:type_select", e.item.relation.targetId);
         }
-        this.highlightRelation = function(e){
-            RiotPolice.trigger("structure:node_highlight", e.item.relation.relationId);
+        this.highlightRelation = e => {
+            RiotPolice.trigger("structure:type_highlight", e.item.relation.targetId);
         }
 
-        this.unhighlightNode = function(e){
-            RiotPolice.trigger("structure:node_unhighlight");
+        this.unhighlightNode = e => {
+            RiotPolice.trigger("structure:type_unhighlight");
         }
     </script>
 </kg-sidebar>

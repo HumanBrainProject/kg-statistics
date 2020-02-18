@@ -53542,11 +53542,12 @@ class RiotStore {
 
 (function () {
     let types = {};
+    let structure = {
+        nodes: [],
+        groupedNodes: [],
+        links: []
+    };
     let selectedType = null;
-    let defaultViewModeNodes = [];
-    let defaultViewModeLinks = [];
-    let defaultViewModeRelations = [];
-    let groupViewModeNodes = [];
     let groupViewModeLinks = [];
     let groupViewModeRelations = [];
     let lastUpdate = null;
@@ -53587,8 +53588,7 @@ class RiotStore {
 
     const generateGroupViewData = () => {
 
-        const nodes = groupViewModeNodes;
-        const relations = groupViewModeRelations;
+        const nodes = structure.groupedNodes;
 
         const groups = getGroups(nodes);
 
@@ -53599,10 +53599,10 @@ class RiotStore {
             //Hidding nodes with too many connections
             nodes.forEach(node => {
                 node.hidden = false;
-                if (relations[node.id] !== undefined &&
+                if (node.relations.length &&
                     whitelist.indexOf(node.id) < 0 &&
                     groups[node.group].value.length > minNodeCounts &&
-                    relations[node.id].length / groups[node.group].value.length > AppConfig.structure.autoHideThreshold
+                    node.relations.length / groups[node.group].value.length > AppConfig.structure.autoHideThreshold
                 ) {
                     toBeHidden.push(node.id);
                 }
@@ -53614,7 +53614,7 @@ class RiotStore {
 
         nodes.forEach(node => {
             node.hidden = false;
-            if (relations[node.id] !== undefined &&
+            if (node.relations.length &&
                 whitelist.indexOf(node.id) < 0 &&
                 groups[node.group].hidden ||
                 toBeHidden.includes(node.id)
@@ -53634,8 +53634,7 @@ class RiotStore {
 
     const generateDefaultViewData = () => {
 
-        const nodes = defaultViewModeNodes;
-        const relations = defaultViewModeRelations;
+        const nodes = structure.nodes;
 
         let toBeHidden;
         //First use
@@ -53644,9 +53643,9 @@ class RiotStore {
             //Hidding nodes with too many connections
             nodes.forEach(node => {
                 node.hidden = false;
-                if (relations[node.id] !== undefined &&
+                if (node.relations.length &&
                     whitelist.indexOf(node.id) < 0 &&
-                    relations[node.id].length / defaultViewModeNodes.length > AppConfig.structure.autoHideThreshold
+                    node.relations.length / structure.nodes.length > AppConfig.structure.autoHideThreshold
                 ) {
                     toBeHidden.push(node.id);
                 }
@@ -53658,15 +53657,15 @@ class RiotStore {
 
         nodes.forEach(node => {
             node.hidden = false;
-            if (relations[node.id] !== undefined &&
-                whitelist.indexOf(node.id) < 0 &&
-                toBeHidden.includes(node.id)
+            if (node.relations.length &&
+                whitelist.indexOf(node.type.id) < 0 &&
+                toBeHidden.includes(node.type.id)
             ) {
                 node.hidden = true;
             }
         });
 
-        hiddenTypes = _(nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenTypes = _(nodes).filter(node => node.hidden).map(node => node.type.id).value();
     };
 
 
@@ -53683,17 +53682,16 @@ class RiotStore {
         return hash;
     };
 
-    const simplifySemantics = type => {
-        const result = {
-            id: type["http://schema.org/identifier"],
-            name: type["http://schema.org/name"],
-            occurrences: type["https://kg.ebrains.eu/vocab/meta/occurrences"],
+    const simplifySemantics = rawtype => {
+        const type = {
+            id: rawtype["http://schema.org/identifier"],
+            name: rawtype["http://schema.org/name"],
+            occurrences: rawtype["https://kg.ebrains.eu/vocab/meta/occurrences"],
             properties: [],
-            links: [],
             spaces: []
         };
-        if (type["https://kg.ebrains.eu/vocab/meta/properties"]) {
-            result.properties = type["https://kg.ebrains.eu/vocab/meta/properties"].map(property => ({
+        if (rawtype["https://kg.ebrains.eu/vocab/meta/properties"]) {
+            type.properties = rawtype["https://kg.ebrains.eu/vocab/meta/properties"].map(property => ({
                 id: property["http://schema.org/identifier"],
                 name: property["http://schema.org/name"],
                 occurrences: property["https://kg.ebrains.eu/vocab/meta/occurrences"],
@@ -53703,151 +53701,115 @@ class RiotStore {
                 }))
             }));
         }
-        if (type["https://kg.ebrains.eu/vocab/meta/links"]) {
-            result.links = type["https://kg.ebrains.eu/vocab/meta/links"].map(link => ({
-                id: link["http://schema.org/identifier"],
-                name: link["http://schema.org/name"],
-                targetType: link["https://kg.ebrains.eu/vocab/meta/targetType"],
-                occurrences: link["https://kg.ebrains.eu/vocab/meta/occurrences"]
+        if (rawtype["https://kg.ebrains.eu/vocab/meta/spaces"]) {
+            type.spaces = rawtype["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
+                name: space["http://schema.org/name"],
+                occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
             }));
         }
-        if (type["https://kg.ebrains.eu/vocab/meta/spaces"]) {
-            result.spaces = type["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => {
-                const res = {
-                    name: space["http://schema.org/name"],
-                    occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"],
-                    links: []
-                };
-                if (space["https://kg.ebrains.eu/vocab/meta/links"]) {
-                    res.links = space["https://kg.ebrains.eu/vocab/meta/links"].map(link => ({
-                        id: link["http://schema.org/identifier"],
-                        name: link["http://schema.org/name"],
-                        targetType: link["https://kg.ebrains.eu/vocab/meta/targetType"],
-                        targetSpace: link["https://kg.ebrains.eu/vocab/meta/targetSpace"]
-                    }));
+        return type;
+    };
+
+    const addRelations = type => {
+        const relations = type.properties.reduce((acc, property) => {
+            const provenance = property.id.startsWith(AppConfig.structure.provenance);
+            property.targetTypes.forEach(targetType => {
+                if (!acc[targetType.id]) {
+                    const target = types[targetType.id];
+                    targetType.name = target?target.name:targetType.id;
+                    acc[targetType.id] = {
+                        occurrences: 0,
+                        targetId: targetType.id,
+                        targetName: targetType.name,
+                        provenance: provenance
+                    }
                 }
-                return res;
+                acc[targetType.id].occurrences += targetType.occurrences;
             });
-        }
-        return result;
-    };
+            return acc;
+        }, {});
+        type.relations = Object.values(relations);
+    }
 
-    const buildRelations = links => {
-        const relations = {};
-        links.forEach(link => {
-            if (relations[link.source.id] === undefined) {
-                relations[link.source.id] = [];
-            }
-            relations[link.source.id].push({
-                ...link,
-                related: link.target
-            });
-            if (relations[link.target.id] === undefined) {
-                relations[link.target.id] = [];
-            }
-            if (link.source !== link.target) {
-                relations[link.target.id].push({
-                    ...link,
-                    related: link.source
+    const buildStructure = data => {
+    
+        types = data.data.reduce((acc, rawType) => {
+            const type = simplifySemantics(rawType);
+            acc[type.id] = type;
+            return acc;
+        }, {});
+
+        const typesList = Object.values(types);
+
+        typesList.forEach(type => addRelations(type));
+        
+        const nodes = typesList.reduce((acc, type) => {
+            const hash = hashCode(type.id);
+            acc[type.id] = {
+                hash: hash,
+                typeHash: hash,
+                name: type.name,
+                occurrences: type.occurrences,
+                type: type,
+                relations: []
+            };
+            return acc
+        }, {});
+
+        typesList.forEach(type => {
+            const node = nodes[type.id];
+            node.relations = type.relations.map(relation => nodes[relation.targetId]);
+        });
+        
+        const links = typesList.reduce((acc, type) => {
+            const sourceNode = nodes[type.id];
+            type.relations
+                .forEach(relation => {
+                    if (relation.target !== type.id) {
+                        const targetNode = nodes[relation.targetId];
+                        const key = type.id + "-" + relation.targetId;
+                        if (!acc[key]) {
+                            acc[key] = {
+                                occurrences: 0,
+                                source: sourceNode,
+                                target: targetNode,
+                                provenance: relation.provenance
+                            }
+                        }
+                        acc[key].occurrences += relation.occurrences;
+                    }
                 });
-            }
-        });
-        return relations;
+            return acc;
+        }, {});
+
+        const groupedNodes = typesList.reduce((acc, type) => {
+            type.spaces.forEach(space => {
+                acc.push({
+                    hash: hashCode(space.name + "/" + type.id),
+                    typeHash: hashCode(type.id),
+                    name: type.name,
+                    occurrences: space.occurrences,
+                    group: space.name,
+                    type: type,
+                    relations: []
+                });
+            });
+            return acc;
+        }, []);
+
+        structure = {
+            nodes: Object.values(nodes),
+            groupedNodes: groupedNodes,
+            links: Object.values(links)
+        };
     };
-
-
-  const buildStructure = data => {
-    types = {};
-    defaultViewModeNodes = [];
-    defaultViewModeLinks = [];
-    defaultViewModeRelations = {};
-    groupViewModeNodes = [];
-    groupViewModeLinks = [];
-    groupViewModeRelations = {};
-    data.data.forEach(rawType => {
-      const type = {
-        ...simplifySemantics(rawType),
-        isLoading: false,
-        isLoaded: false,
-        error: null
-      };
-      types[type.id] = type;
-      const typeHash = hashCode(type.id);
-      const hash = typeHash;
-      const node = {
-        hash: hash,
-        typeHash: typeHash,
-        data: {
-          id: type.id,
-          name: type.name,
-          occurrences: type.occurrences
-        }
-      };
-      defaultViewModeNodes.push(node);
-      defaultViewModeLinks = type.links.map(link => {
-        const targetHash = hashCode(link.targetType);
-        return {
-          id: link.id,
-          name: link.name,
-          provenance: link.name !== undefined && link.name.startsWith(PROVENENCE_SEMANTIC),
-          value: link.occurrences,
-          source: {
-            id: link.id,
-            hash: hash,
-            typeHash: typeHash
-          },
-          target: {
-            id: link.type,
-            hash: targetHash,
-            typeHash: targetHash
-          }
-        };
-      });
-      type.spaces.forEach(space => {
-        const groupViewModeNode = {
-          hash: hashCode(space.name + "/" + type.id),
-          typeHash: typeHash,
-          data: {
-            id: type.id,
-            name: type.name,
-            occurrences: space.occurrences,
-            group: space.name
-          }
-        };
-        groupViewModeNodes.push(groupViewModeNode);
-        space.links.forEach(link => {
-          const targetTypeHash = hashCode(link.targetType);
-          const groupViewModeLink = {
-            id: link.id,
-            name: link.name,
-            provenance: link.name !== undefined && link.name.startsWith(PROVENENCE_SEMANTIC),
-            source: {
-              id: type.id,
-              group: space.name,
-              hash: hash,
-              typeHash: typeHash
-            },
-            target: {
-              id: link.targetType,
-              group: link.targetGroup,
-              hash: hashCode(space.name + "/" + link.targetType),
-              typeHash: targetTypeHash
-            }
-          };
-          groupViewModeLinks.push(groupViewModeLink);
-        });
-      });
-    });
-    groupViewModeRelations = buildRelations(groupViewModeLinks);
-    defaultViewModeRelations = buildRelations(defaultViewModeLinks);
-  };
 
     const loadStructure = () => {
         if (!structureStore.is("STRUCTURE_LOADING")) {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/types?stage=LIVE&withProperties=false`)
+            fetch(`/api/types?stage=LIVE&withProperties=true`)
                 .then(response => response.json())
                 .then(data => {
                     buildStructure(data);
@@ -53866,48 +53828,19 @@ class RiotStore {
         }
     };
 
-    const loadType = type => {
-        if (!type.isLoaded && !type.isLoading) {
-            if (!structureStore.is("TYPE_LOADING")) {
-                type.error = null;
-                type.isLoading = true;
-                structureStore.toggleState("TYPE_LOADING", true);
-                structureStore.toggleState("TYPE_ERROR", false);
-                structureStore.notifyChange();
-                fetch(`/api/typesByName?stage=LIVE&withProperties=true&name=${type.id}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        const definition = simplifySemantics(data.data);
-                        type.properties = definition.properties.sort((a, b) => b.occurrences - a.occurrences);
-                        type.isLoaded = true;
-                        type.isLoading = false;
-                        structureStore.toggleState("TYPE_LOADED", false);
-                        structureStore.toggleState("TYPE_LOADING", false);
-                        structureStore.notifyChange();
-                    })
-                    .catch(e => {
-                        type.error = e;
-                        type.isLoading = false;
-                        structureStore.toggleState("TYPE_ERROR", true);
-                        structureStore.toggleState("TYPE_LOADED", false);
-                        structureStore.toggleState("TYPE_LOADING", false);
-                        structureStore.notifyChange();
-                    });
-            }
-        }
-    };
-
     const getTypes = () => Object.values(types);
 
-    const getNodes = () => groupViewMode ? groupViewModeNodes : defaultViewModeNodes;
+    const getStructure = () => groupViewMode ? {nodes: structure.groupedNodes, links: []} : {nodes: structure.nodes, links: structure.links};
 
-    const getLinks = () => groupViewMode ? groupViewModeLinks : defaultViewModeLinks;
+    const getNodes = () => groupViewMode ? structure.groupedNodes : structure.nodes;
 
-    const getRelations = () => groupViewMode ? groupViewModeRelations : defaultViewModeRelations;
+    const getLinks = () => groupViewMode ? groupViewModeLinks : structure.links;
 
-    const getRelationsOf = id => {
-        const relations = getRelations();
-        const rel = getRelations()[id];
+    const getRelations2 = () => ({});
+
+    const getRelations2Of = id => {
+        const relations = getRelations2();
+        const rel = getRelations2()[id];
         if (!rel) {
             return [];
         }
@@ -53925,9 +53858,8 @@ class RiotStore {
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
-            "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
             "SELECTED_NODE", "NODE_HIGHLIGHTED",
-            "GROUP_VIEW_MODE", "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
+            "GROUP_VIEW_MODE", "SHOW_SEARCH_PANEL", "SHOW_TYPES_PANEL", "SHOW_SPACES_PANEL"
         ],
         init, reset);
 
@@ -53949,9 +53881,8 @@ class RiotStore {
             structureStore.toggleState("NODE_HIGHLIGHTED", false);
             highlightedNode = undefined;
             structureStore.toggleState("SELECTED_NODE", !!node);
-            structureStore.toggleState("SEARCH_ACTIVE", false);
-            selectedType = types[node.data.id];
-            loadType(selectedType);
+            structureStore.toggleState("SHOW_SEARCH_PANEL", false);
+            selectedType = node.type;
             selectedNode = node;
         } else {
             structureStore.toggleState("NODE_HIGHLIGHTED", false);
@@ -53978,7 +53909,7 @@ class RiotStore {
     structureStore.addAction("structure:search", query => {
         if (query) {
             searchQuery = query;
-            searchResults = _.filter(defaultViewModeNodes, node => node.data.id.match(new RegExp(query, "gi")));
+            searchResults = _.filter(structure.nodes, node => node.type.id.match(new RegExp(query, "gi")));
         } else {
             searchQuery = query;
             searchResults = [];
@@ -53986,17 +53917,17 @@ class RiotStore {
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:search_toggle", () => {
-        structureStore.toggleState("SEARCH_ACTIVE");
+    structureStore.addAction("structure:search_panel_toggle", () => {
+        structureStore.toggleState("SHOW_SEARCH_PANEL");
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:hide_toggle", () => {
-        structureStore.toggleState("HIDE_ACTIVE");
+    structureStore.addAction("structure:types_panel_toggle", () => {
+        structureStore.toggleState("SHOW_TYPES_PANEL");
         structureStore.notifyChange();
     });
-    structureStore.addAction("structure:hide_spaces_toggle", () => {
-        structureStore.toggleState("HIDE_SPACES_ACTIVE");
+    structureStore.addAction("structure:spaces_panel_toggle", () => {
+        structureStore.toggleState("SHOW_SPACES_PANEL");
         structureStore.notifyChange();
     });
 
@@ -54043,13 +53974,13 @@ class RiotStore {
         highlightedNode = undefined;
         structureStore.toggleState("SELECTED_NODE", false);
         selectedNode = undefined;
-        defaultViewModeNodes.forEach(node => { node.hidden = !!hide });
-        hiddenTypes = _(defaultViewModeNodes).filter(node => node.hidden).map(node => node.id).value();
+        structure.nodes.forEach(node => { node.hidden = !!hide });
+        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
         if (!hide) {
             hiddenSpaces = [];
         } else {
-            hiddenSpaces = Object.keys(getGroups(defaultViewModeNodes));
+            hiddenSpaces = Object.keys(getGroups(structure.nodes));
         }
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();
@@ -54080,7 +54011,7 @@ class RiotStore {
      */
 
     structureStore.addInterface("getLastUpdate", () => lastUpdate);
-
+    
     structureStore.addInterface("getSelectedType", () => selectedType);
 
     structureStore.addInterface("getSelectedNode", () => selectedNode);
@@ -54088,6 +54019,8 @@ class RiotStore {
     structureStore.addInterface("getHighlightedNode", () => highlightedNode);
 
     structureStore.addInterface("getTypes", getTypes);
+
+    structureStore.addInterface("getStructure", getStructure);
 
     structureStore.addInterface("getNodes", getNodes);
 
@@ -54097,14 +54030,14 @@ class RiotStore {
 
     structureStore.addInterface("getHiddenSpaces", () => hiddenSpaces);
 
-    structureStore.addInterface("getRelationsOf", getRelationsOf);
+    structureStore.addInterface("getRelations2Of", getRelations2Of);
 
     structureStore.addInterface("hasRelations", (id, filterHidden) => {
         if (filterHidden) {
-            const relations = _(getRelationsOf(id)).filter(rel => hiddenTypes.indexOf(rel.relatedType) === -1).value();
+            const relations = _(getRelations2Of(id)).filter(rel => hiddenTypes.indexOf(rel.relatedType) === -1).value();
             return !!relations.length;
         } else {
-            return getRelationsOf(id).length;
+            return getRelations2Of(id).length;
         }
     });
 
@@ -54116,19 +54049,24 @@ class RiotStore {
 })();
 
 
-riot.tag2('kg-app', '<div class="kg-app-container "> <kg-topbar></kg-topbar> <kg-body if="{isLoaded}"></kg-body> <kg-hide-panel if="{isLoaded}"></kg-hide-panel> <kg-hide-spaces-panel if="{isLoaded && groupViewMode}"></kg-hide-spaces-panel> <kg-search-panel if="{isLoaded}"></kg-search-panel> <kg-sidebar if="{isLoaded}"></kg-sidebar> <div class="loading-panel {show: isLoading}"> <span class="loading-spinner"> <img src="img/ebrains.svg" alt="loading..."> </span> <span class="loading-label">Loading structure</span> </div> <div class="error-panel {show: hasError}"> <span class="error-message">The service is temporary unavailable. Please retry in a moment.</span> <div class="error-navigation"> <button onclick="{retry}">Retry</button> </div> </div> </div>', 'kg-app,[data-is="kg-app"]{ display:block; width:100vw; height:100vh; --topbar-height: 80px; --sidebar-width: 400px; --search-panel-width: 300px; position:absolute; top:0; left:0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; } kg-app input,[data-is="kg-app"] input,kg-app button,[data-is="kg-app"] button{ -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; } kg-app button *,[data-is="kg-app"] button *{ cursor: pointer; } kg-app button[disabled] *,[data-is="kg-app"] button[disabled] *{ cursor: default; } kg-app a,[data-is="kg-app"] a{ color:white; } kg-app a:hover,[data-is="kg-app"] a:hover{ color:#aaa; } kg-app kg-topbar,[data-is="kg-app"] kg-topbar{ position:absolute; top:0; left:0; width:100vw; height:var(--topbar-height); width:100vw; background-color:#222; } kg-app kg-body,[data-is="kg-app"] kg-body{ position:absolute; width:calc(100vw - var(--sidebar-width)); height:calc(100vh - var(--topbar-height)); background:#333; top:var(--topbar-height); left:0; } kg-app kg-sidebar,[data-is="kg-app"] kg-sidebar{ position:absolute; width:var(--sidebar-width); height:calc(100vh - var(--topbar-height)); background:#111; top:var(--topbar-height); right:0; overflow-y: auto; z-index:20; } kg-app kg-search-panel,[data-is="kg-app"] kg-search-panel,kg-app kg-hide-panel,[data-is="kg-app"] kg-hide-panel,kg-app kg-hide-spaces-panel,[data-is="kg-app"] kg-hide-spaces-panel{ position:absolute; width:var(--search-panel-width); height:calc(100vh - var(--topbar-height) - 50px); background:#222; top:calc(var(--topbar-height) + 25px); right:calc(var(--sidebar-width) - var(--search-panel-width)); overflow:visible; border-radius: 10px 0 0 10px; transition:right 0.5s cubic-bezier(.34,1.06,.63,.93); } kg-app .kg-app-container,[data-is="kg-app"] .kg-app-container{ position:relative; width:100vw; height:100vh; transition:transform 0.7s cubic-bezier(0.77, -0.46, 0.35, 1.66); z-index:2; } kg-app kg-menu-popup,[data-is="kg-app"] kg-menu-popup{ position:absolute; z-index:1; top:0; right:0; height:100vh; width:200px; } kg-app .loading-panel,[data-is="kg-app"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-app .loading-panel.show,[data-is="kg-app"] .loading-panel.show{ top: calc(40% - 40px); } kg-app .loading-panel .loading-spinner,[data-is="kg-app"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-app .loading-panel .loading-spinner img,[data-is="kg-app"] .loading-panel .loading-spinner img{ -webkit-animation: loading-spinner-rotate 0.5s infinite linear; animation: loading-spinner-rotate 0.5s infinite linear; } kg-app .loading-panel .loading-label,[data-is="kg-app"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-app .error-panel,[data-is="kg-app"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-app .error-panel.show,[data-is="kg-app"] .error-panel.show{ top: calc(40% - 60px); } kg-app .error-panel .error-message,[data-is="kg-app"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-app .error-panel .error-navigation,[data-is="kg-app"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-app .error-panel button,[data-is="kg-app"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-app .error-panel button:hover,[data-is="kg-app"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
+riot.tag2('kg-app', '<div class="kg-app-container "> <kg-topbar></kg-topbar> <kg-body if="{isLoaded}"></kg-body> <kg-types-panel if="{isLoaded}"></kg-types-panel> <kg-spaces-panel if="{isLoaded && groupViewMode}"></kg-spaces-panel> <kg-search-panel if="{isLoaded}"></kg-search-panel> <kg-sidebar if="{isLoaded}"></kg-sidebar> <div class="loading-panel {show: isLoading}"> <span class="loading-spinner"> <img src="img/ebrains.svg" alt="loading..."> </span> <span class="loading-label">Loading structure</span> </div> <div class="error-panel {show: hasError}"> <span class="error-message">The service is temporary unavailable. Please retry in a moment.</span> <div class="error-navigation"> <button onclick="{retry}">Retry</button> </div> </div> </div>', 'kg-app,[data-is="kg-app"]{ display:block; width:100vw; height:100vh; --topbar-height: 80px; --sidebar-width: 400px; --search-panel-width: 300px; position:absolute; top:0; left:0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; } kg-app input,[data-is="kg-app"] input,kg-app button,[data-is="kg-app"] button{ -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; } kg-app button *,[data-is="kg-app"] button *{ cursor: pointer; } kg-app button[disabled] *,[data-is="kg-app"] button[disabled] *{ cursor: default; } kg-app a,[data-is="kg-app"] a{ color:white; } kg-app a:hover,[data-is="kg-app"] a:hover{ color:#aaa; } kg-app kg-topbar,[data-is="kg-app"] kg-topbar{ position:absolute; top:0; left:0; width:100vw; height:var(--topbar-height); width:100vw; background-color:#222; } kg-app kg-body,[data-is="kg-app"] kg-body{ position:absolute; width:calc(100vw - var(--sidebar-width)); height:calc(100vh - var(--topbar-height)); background:#333; top:var(--topbar-height); left:0; } kg-app kg-sidebar,[data-is="kg-app"] kg-sidebar{ position:absolute; width:var(--sidebar-width); height:calc(100vh - var(--topbar-height)); background:#111; top:var(--topbar-height); right:0; overflow-y: auto; z-index:20; } kg-app kg-search-panel,[data-is="kg-app"] kg-search-panel,kg-app kg-types-panel,[data-is="kg-app"] kg-types-panel,kg-app kg-spaces-panel,[data-is="kg-app"] kg-spaces-panel{ position:absolute; width:var(--search-panel-width); height:calc(100vh - var(--topbar-height) - 50px); background:#222; top:calc(var(--topbar-height) + 25px); right:calc(var(--sidebar-width) - var(--search-panel-width)); overflow:visible; border-radius: 10px 0 0 10px; transition:right 0.5s cubic-bezier(.34,1.06,.63,.93); } kg-app .kg-app-container,[data-is="kg-app"] .kg-app-container{ position:relative; width:100vw; height:100vh; transition:transform 0.7s cubic-bezier(0.77, -0.46, 0.35, 1.66); z-index:2; } kg-app kg-menu-popup,[data-is="kg-app"] kg-menu-popup{ position:absolute; z-index:1; top:0; right:0; height:100vh; width:200px; } kg-app .loading-panel,[data-is="kg-app"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-app .loading-panel.show,[data-is="kg-app"] .loading-panel.show{ top: calc(40% - 40px); } kg-app .loading-panel .loading-spinner,[data-is="kg-app"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-app .loading-panel .loading-spinner img,[data-is="kg-app"] .loading-panel .loading-spinner img{ -webkit-animation: loading-spinner-rotate 0.5s infinite linear; animation: loading-spinner-rotate 0.5s infinite linear; } kg-app .loading-panel .loading-label,[data-is="kg-app"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-app .error-panel,[data-is="kg-app"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-app .error-panel.show,[data-is="kg-app"] .error-panel.show{ top: calc(40% - 60px); } kg-app .error-panel .error-message,[data-is="kg-app"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-app .error-panel .error-navigation,[data-is="kg-app"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-app .error-panel button,[data-is="kg-app"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-app .error-panel button:hover,[data-is="kg-app"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
         this.hasError = false;
         this.isLoading = false;
         this.isLoaded = false;
         this.groupViewMode = false;
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
             RiotPolice.trigger("structure:load");
         });
 
-        this.on("update", function () {
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
             this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
             this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
@@ -54140,6 +54078,7 @@ riot.tag2('kg-app', '<div class="kg-app-container "> <kg-topbar></kg-topbar> <kg
 
 riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegraph" ref="svg"></svg> <div class="actions"> <button class="control-button zoom-in" onclick="{zoomIn}"> <i class="fa fa-plus" aria-hidden="true"></i> </button> <button class="control-button zoom-out" onclick="{zoomOut}"> <i class="fa fa-minus" aria-hidden="true"></i> </button> <button class="control-button reset-view" onclick="{resetView}"> <i class="fa fa-dot-circle-o" aria-hidden="true"></i> </button> <button class="control-button regroup" onclick="{regroup}"> <i class="fa fa-compress" aria-hidden="true"></i> </button> <button class="control-button degroup" onclick="{degroup}"> <i class="fa fa-expand" aria-hidden="true"></i> </button> <button class="control-button capture" onclick="{capture}"> <i class="fa fa-camera" aria-hidden="true"></i> </button> </div>', 'kg-body,[data-is="kg-body"]{ display: block; } kg-body .nodegraph,[data-is="kg-body"] .nodegraph{ width: calc(100vw - var(--sidebar-width)); height: calc(100vh - var(--topbar-height)); cursor: all-scroll; font-size: 10px; } kg-body .nodegraph text,[data-is="kg-body"] .nodegraph text{ pointer-events: none; } kg-body .link-line,[data-is="kg-body"] .link-line{ fill: none; stroke: #3498db; transition: stroke 0.5s ease-out, fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out; } kg-body .link-line.provenance,[data-is="kg-body"] .link-line.provenance{ stroke-dasharray: 3; stroke: rgba(255, 245, 162, 0.5); } kg-body .link-node__text,[data-is="kg-body"] .link-node__text{ font-size: 9px; fill: #333; transition: fill-opacity 0.5s ease-out; } kg-body .link-node__circle,[data-is="kg-body"] .link-node__circle{ fill: #ecf0f1; stroke: #bdc3c7; transition: fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out; } kg-body .link-node__circle.provenance,[data-is="kg-body"] .link-node__circle.provenance{ fill: #fff5a2; } kg-body .node__circle,[data-is="kg-body"] .node__circle{ stroke: #5ab1eb; fill: #1d6392; stroke-width: 1.5px; cursor: pointer; transition: stroke 0.5s ease-out, fill 0.5s ease-out, fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out; } kg-body .node__occurrences,[data-is="kg-body"] .node__occurrences{ font-size: 12px; fill: white; font-weight: bold; transition: fill-opacity 0.5s ease-out; } kg-body .node__label,[data-is="kg-body"] .node__label{ fill: #fff; font-size: 7px; transition: fill-opacity 0.5s ease-out; } kg-body .dephased,[data-is="kg-body"] .dephased{ stroke-opacity: 0.1; fill-opacity: 0.1; } kg-body .selectedRelation,[data-is="kg-body"] .selectedRelation{ stroke: #2ecc71; } kg-body .selectedRelation circle,[data-is="kg-body"] .selectedRelation circle{ stroke: #2ecc71; } kg-body .selectedRelation line,[data-is="kg-body"] .selectedRelation line{ stroke: #2ecc71; } kg-body .selectedNode circle,[data-is="kg-body"] .selectedNode circle{ fill: #27ae60; stroke: #2ecc71; } kg-body .searchResult circle,[data-is="kg-body"] .searchResult circle{ stroke: #8e44ad; fill: #9b59b6; } kg-body .highlightedRelation,[data-is="kg-body"] .highlightedRelation{ stroke: #f1c40f; } kg-body .highlightedRelation circle,[data-is="kg-body"] .highlightedRelation circle{ stroke: #f1c40f; } kg-body .highlightedRelation line,[data-is="kg-body"] .highlightedRelation line{ stroke: #f1c40f; } kg-body .highlightedNode circle,[data-is="kg-body"] .highlightedNode circle{ fill: #f39c12; stroke: #f1c40f; } kg-body text,[data-is="kg-body"] text{ stroke: none !important; font-family: "Montserrat", sans-serif; } kg-body .actions,[data-is="kg-body"] .actions{ position: absolute; left: 20px; bottom: 20px; } kg-body .actions button,[data-is="kg-body"] .actions button{ display: block; width: 40px; height: 40px; line-height: 40px; background: rgba(16, 16, 16, 0.5); appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; transition: all 0.5s ease-out; cursor: pointer; border-bottom: 1px solid #333; } kg-body .actions button:hover,[data-is="kg-body"] .actions button:hover{ color: white; background: #111; } kg-body .actions button:first-child,[data-is="kg-body"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-body .actions button:last-child,[data-is="kg-body"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom: none; } kg-body .hull,[data-is="kg-body"] .hull{ fill: steelblue; stroke: steelblue; fill-opacity: 0.3; stroke-opacity: 0.3; stroke-width: 10px; stroke-linejoin: round; } kg-body .hull_container,[data-is="kg-body"] .hull_container{ width:100%; height:100%; } kg-body .hull_name,[data-is="kg-body"] .hull_name{ position: absolute; top: 20px; left: 20px; color: white; }', '', function(opts) {
         let self = this;
+        this.toto = "Wirkd";
 
         const maxLinkSize = 40;
         const maxNodeSize = 60;
@@ -54168,17 +54107,18 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
         this.initialZoom = 1;
         this.groupInitialZoom = 0.5;
 
-        this.on("mount", () =>  {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
-            this.draw();
+            this.update();
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
         });
 
         this.on("update", () => {
-            this.draw();
-        });
-
-        this.draw = () => {
             if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
@@ -54187,13 +54127,14 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
             this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
             const previousLastUpdate = this.lastUpdate;
             this.lastUpdate = this.stores.structure.getLastUpdate();
-            var nodes = this.stores.structure.getNodes();
-            var links = this.stores.structure.getLinks();
+            var structure = this.stores.structure.getStructure();
+            var nodes = structure.nodes;
+            var links = structure.links;
 
             let previousHiddenTypesCount = this.hiddenTypes.length;
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
-            var nodesNumOfInstances = nodes.map(o => o.data.occurrences);
+            var nodesNumOfInstances = nodes.map(o => o.occurrences);
             var linkValues = links.map(o => o.occurrences);
             nodeRscale = d3.scaleLog()
                 .domain([1,d3.max(nodesNumOfInstances)])
@@ -54203,14 +54144,12 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                 .range([3,maxLinkSize])
 
             if (!this.svg || previousHiddenTypesCount !== this.hiddenTypes.length || this.groupViewMode !== previousGroupViewMode || this.lastUpdate !== previousLastUpdate) {
-                this.nodes = _.filter(nodes, node => !node.hidden);
-                this.links = _.filter(_.cloneDeep(links), link => this.hiddenTypes.indexOf(link.source.id) ===
-                    -1 && this.hiddenTypes.indexOf(link.target.id) === -1);
+                this.nodes = nodes;
+                this.links = links;
+
                 $(this.refs.svg).empty().css({
                     opacity: 0
                 });
-
-                this.links = _.filter(this.links, link => link.source.id !== link.target.id);
                 this.firstDraw();
                 $(this.refs.svg).animate({
                     opacity: 1
@@ -54256,7 +54195,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
             }
 
             this.svg.selectAll(".searchResult").classed("searchResult", false);
-            if (this.stores.structure.is("SEARCH_ACTIVE")) {
+            if (this.stores.structure.is("SHOW_SEARCH_PANEL")) {
                 this.searchResults = this.stores.structure.getSearchResults();
                 this.searchResults.forEach(node => {
                     this.svg.selectAll(".is-type_" + node.typeHash).classed("searchResult", true);
@@ -54264,7 +54203,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
             } else {
                 this.searchResults = [];
             }
-        };
+        });
 
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
@@ -54276,7 +54215,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     zoom).scale(zoomScaleTo));
         }
 
-        $(document).on("keydown", (e) => {
+        $(document).on("keydown", e => {
             if (e.shiftKey && e.ctrlKey && e.keyCode == 67) {
                 if (!this.blockDownload) {
                     this.blockDownload = true;
@@ -54353,7 +54292,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
             var groupIds = [];
             if (this.groupViewMode) {
 
-                groupIds = d3.nest().key((n) => n.data.group ).entries(this.nodes);
+                groupIds = d3.nest().key((n) => n.group ).entries(this.nodes);
             }
 
             self.simulation = d3.forceSimulation(nodes)
@@ -54367,7 +54306,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
-                    .radius(d => nodeRscale(d.data.occurrences) + 8)
+                    .radius(d => nodeRscale(d.occurrences) + 8)
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
@@ -54429,12 +54368,14 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                 .data(self.links)
                 .enter().append("line")
                 .attr("class", "link-line")
-                .each(d => {
+                .each(function(d) {
                     d3.select(this).classed("related-to_" + d.source.hash, true);
                     d3.select(this).classed("related-to_" + d.target.hash, true);
+                    d3.select(this).classed("related-to-type_" + d.source.typeHash, true);
+                    d3.select(this).classed("related-to-type_" + d.target.typeHash, true);
                     d3.select(this).classed("provenance", d.provenance)
                 })
-                .attr("stroke-width", d => linkRscale(d.value))
+                .attr("stroke-width", d => linkRscale(d.occurrences))
                 .on("mouseover", d => {
                     if (d.target.group == d.source.group){
                         self.hullName = d.source.group
@@ -54453,18 +54394,18 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     .data(self.links)
                     .enter().append("g")
                     .attr("class", "link-node")
-                    .each(d => {
+                    .each(function(d) {
                         let $this = d3.select(this);
 
-                        circle = $this.append("circle");
-                        circle.attr("class", "link-node__circle")
-                            .attr("r", 10);
-                        circle.classed("provenance", d.provenance);
+                        $this.append("circle")
+                            .attr("class", "link-node__circle")
+                            .attr("r", 10)
+                            .classed("provenance", d.provenance);
 
                         $this.append("text")
                             .attr("class", "link-node__text")
                             .attr("text-anchor", "middle")
-                            .text(d.value);
+                            .text(d.occurrences);
                         $this.append("title").text(d.name);
 
                         d3.select(this).classed("related-to_" + d.source.hash, true);
@@ -54495,25 +54436,26 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                         let $this = d3.select(this);
                         $this.append("circle")
                             .attr("class", "node__circle")
-                            .attr("r", d => nodeRscale(d.data.occurrences))
-                            .append('title').text(d.data.id);
+                            .attr("r", d => nodeRscale(d.occurrences))
+                            .append('title').text(d.name);
 
                         $this.append("text")
                             .attr("class", "node__label")
                             .attr("text-anchor", "middle")
-                            .text(d.data.name);
+                            .text(d.name);
 
                         $this.append("text")
                             .attr("class", "node__occurrences")
                             .attr("text-anchor", "middle")
-                            .text(d.data.occurrences);
+                            .text(d.occurrences);
 
                         d3.select(this).classed("is_" + d.hash, true);
                         d3.select(this).classed("is-type_" + d.typeHash, true);
                         d3.select(this).classed("related-to_" + d.hash, true);
                         d3.select(this).classed("related-to-type_" + d.typeHash, true);
-                        self.stores.structure.getRelationsOf(d.id).forEach(relation => {
-                            d3.select(this).classed("related-to_" + relation.related.typeHash, true);
+                        d.relations.forEach(relation => {
+                            d3.select(this).classed("related-to_" + relation.hash, true);
+                            d3.select(this).classed("related-to-type_" + relation.typeHash, true);
                         });
 
                     })
@@ -54523,7 +54465,7 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                         .on("end", dragended))
                     .on("mouseover", d => {
                         self.view
-                            .selectAll(".node:not(.related-to_" + d.hash + "), .link-node:not(.related-to_" + d.hash + "), .link-line:not(.related-to_" + d.hash + ")")
+                            .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
                             .classed("dephased", true);
                         self.hullName = d.group
                         self.update()
@@ -54575,8 +54517,8 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
 
                 var coordMap = new Map();
                 nodes.each(node => {
-                    const coord = {x: node.x, y: node.y, occurrences: node.data.occurrences};
-                    (coordMap[node.data.group] = coordMap[node.data.group] || []).push(coord)
+                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
+                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
                 });
 
                 var centroids = new Map();
@@ -54601,10 +54543,10 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;
                 }
 
-                var forceX = d3.forceX(d => centroids[d.data.group] ? centroids[d.data.group].x : width / 2)
+                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
                     .strength(0.3)
 
-                var forceY = d3.forceY(d => centroids[d.data.group] ? centroids[d.data.group].y : height / 2)
+                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
                     .strength(0.3)
 
                 self.simulation
@@ -54651,13 +54593,13 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
                     .attr('transform', 'scale(1) translate(0,0)')
                     .attr('d', d => {
                         var node_coords = nodes
-                            .filter(d => d.data.group == n.key)
+                            .filter(d => d.group == n.key)
 
                         if (node_coords.nodes().length == 1){
 
                             polygon = node_coords.data().map(i => { return [i.x, i.y]})
                             centroid = polygon[0]
-                            return circle(n.values[0].data.occurrences)
+                            return circle(n.values[0].occurrences)
 
                         } else if (node_coords.nodes().length == 2){
 
@@ -54726,179 +54668,27 @@ riot.tag2('kg-body', '<div class="hull_name">{hullName}</div> <svg class="nodegr
         };
 });
 
-riot.tag2('kg-hide-panel', '<button class="open-panel" onclick="{togglePanel}"> <i class="fa fa-eye-slash" aria-hidden="true"></i> <span class="bubble">{hiddenTypes.length}</span> </button> <div class="title"> Nodes visibility <div class="actions"> <button class="hide-all" onclick="{hideAll}">Hide all</button> <button class="show-all" onclick="{showAll}">Show all</button> </div> </div> <div class="nodelist"> <ul> <li each="{node in nodes}"> <a class="{⁗disabled⁗: node.hidden}" href="#" onclick="{toggleHide}" onmouseover="{highlightNode}" onmouseout="{unhighlightNode}"> {node.data.id} </a> <span class="occurrences">{node.data.occurrences}</span> </li> </ul> </div>', 'kg-hide-panel.open,[data-is="kg-hide-panel"].open{ right: var(--sidebar-width); z-index:10; } kg-hide-panel,[data-is="kg-hide-panel"]{ padding: 15px 15px; color:white; } kg-hide-panel button.open-panel,[data-is="kg-hide-panel"] button.open-panel{ position: absolute; top: 60px; left: -40px; width: 40px; height: 40px; line-height: 40px; background: #222; border-radius: 10px 0 0 10px; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; } kg-hide-panel .open-panel .bubble,[data-is="kg-hide-panel"] .open-panel .bubble{ position:absolute; display:block; background-color:#444; border-radius:10px; height:15px; line-height:15px; font-size:10px; font-weight:bold; top:5px; right:5px; padding:0 4px; } kg-hide-panel .types,[data-is="kg-hide-panel"] .types{ margin-top: 15px; max-height:calc(100% - 51px); overflow-y:auto; } kg-hide-panel ul,[data-is="kg-hide-panel"] ul{ font-size: 0.8em; padding-left: 0; list-style: none; } kg-hide-panel li,[data-is="kg-hide-panel"] li{ padding: 3px 0; line-height: 1; } kg-hide-panel .occurrences,[data-is="kg-hide-panel"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-hide-panel .nodelist,[data-is="kg-hide-panel"] .nodelist{ margin-top: 0; max-height:calc(100% - 45px); overflow-y:auto; } kg-hide-panel .disabled,[data-is="kg-hide-panel"] .disabled{ text-decoration: line-through; color:#aaa; } kg-hide-panel .actions,[data-is="kg-hide-panel"] .actions{ overflow:hidden; margin-top:15px; } kg-hide-panel .actions button,[data-is="kg-hide-panel"] .actions button{ width:50%; height:30px; line-height:30px; padding:0; font-size:14px; display:block; float:left; -webkit-appearance:none; appearance:none; background:#111; color:white; border:0; border-radius: 5px 0 0 5px; transition:background-color 0.25s ease-out; cursor:pointer; outline:none; } kg-hide-panel .actions button:hover,[data-is="kg-hide-panel"] .actions button:hover{ background:#333; } kg-hide-panel .actions button:last-child,[data-is="kg-hide-panel"] .actions button:last-child{ border-radius: 0 5px 5px 0; border-left:1px solid #222; }', '', function(opts) {
-        this.query = "";
-        this.results = [];
-        this.hiddenTypes = [];
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("structure", this);
-            RiotPolice.on("structure.changed", this.update);
-        });
-
-        this.on("update", function () {
-            this.nodes = _.orderBy(this.stores.structure.getNodes(), 'occurrences', 'desc');
-            this.hiddenTypes = this.stores.structure.getHiddenTypes();
-
-            if(this.stores.structure.is("HIDE_ACTIVE")){
-                if(!$(this.root).hasClass("open")){
-                    $(this.root).addClass("open");
-                    $(this.refs.query).focus();
-                }
-            } else {
-                if($(this.root).hasClass("open")){
-                    $(this.root).removeClass("open");
-                }
-            }
-        });
-
-        this.togglePanel = function(){
-            RiotPolice.trigger("structure:hide_toggle");
-        }
-        this.toggleHide = function(e){
-            RiotPolice.trigger("structure:type_toggle_hide", e.item.node);
-        }
-        this.hideAll = function(){
-            RiotPolice.trigger("structure:all_types_toggle_hide", true);
-        }
-        this.showAll = function(){
-            RiotPolice.trigger("structure:all_types_toggle_hide", false);
-        }
-        this.highlightNode = function(e){
-            RiotPolice.trigger("structure:node_highlight", e.item.node);
-        }
-        this.unhighlightNode = function(e){
-            RiotPolice.trigger("structure:node_unhighlight");
-        }
-});
-
-riot.tag2('kg-hide-spaces-panel', '<button class="open-panel" onclick="{togglePanel}"> <i class="fa fa-share-alt reverse" aria-hidden="true"></i> <span class="bubble">{hiddenSpaces.length}</span> </button> <div class="title"> Spaces visibility <div class="actions"> <button class="show-all" onclick="{showAll}">Show all</button> </div> </div> <div class="spacelist"> <ul> <li each="{space in Array.from(spaces)}"> <a class="{⁗disabled⁗: space.hidden}" href="#" onclick="{toggleHide}" onmouseover="{highlightSpace}" onmouseout="{unhighlightSpace}"> {space.name} </a> <span class="occurrences">{space.length}</span> </li> </ul> </div>', 'kg-hide-spaces-panel.open,[data-is="kg-hide-spaces-panel"].open{ right: var(--sidebar-width); z-index:10; } kg-hide-spaces-panel,[data-is="kg-hide-spaces-panel"]{ padding: 15px 15px; color:white; } kg-hide-spaces-panel button.open-panel,[data-is="kg-hide-spaces-panel"] button.open-panel{ position: absolute; top: 110px; left: -40px; width: 40px; height: 40px; line-height: 40px; background: #222; border-radius: 10px 0 0 10px; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; } kg-hide-spaces-panel .open-panel .bubble,[data-is="kg-hide-spaces-panel"] .open-panel .bubble{ position:absolute; display:block; background-color:#444; border-radius:10px; height:15px; line-height:15px; font-size:10px; font-weight:bold; top:5px; right:5px; padding:0 4px; } kg-hide-spaces-panel .types,[data-is="kg-hide-spaces-panel"] .types{ margin-top: 15px; max-height:calc(100% - 45px); overflow-y:auto; } kg-hide-spaces-panel ul,[data-is="kg-hide-spaces-panel"] ul{ font-size: 0.8em; padding-left: 0; list-style: none; } kg-hide-spaces-panel li,[data-is="kg-hide-spaces-panel"] li{ padding: 3px 0; line-height: 1; } kg-hide-spaces-panel .occurrences,[data-is="kg-hide-spaces-panel"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-hide-spaces-panel .spacelist,[data-is="kg-hide-spaces-panel"] .spacelist{ margin-top: 0; max-height:calc(100% - 51px); overflow-y:auto; } kg-hide-spaces-panel .disabled,[data-is="kg-hide-spaces-panel"] .disabled{ text-decoration: line-through; color:#aaa; } kg-hide-spaces-panel .actions,[data-is="kg-hide-spaces-panel"] .actions{ overflow:hidden; margin-top:15px; } kg-hide-spaces-panel .actions button,[data-is="kg-hide-spaces-panel"] .actions button{ width:50%; height:30px; line-height:30px; padding:0; font-size:14px; display:block; float:left; -webkit-appearance:none; appearance:none; background:#111; color:white; border:0; border-radius: 5px; transition:background-color 0.25s ease-out; cursor:pointer; outline:none; } kg-hide-spaces-panel .actions button:hover,[data-is="kg-hide-spaces-panel"] .actions button:hover{ background:#333; } kg-hide-spaces-panel .reverse,[data-is="kg-hide-spaces-panel"] .reverse{ transform: rotate(180deg); }', '', function(opts) {
-        this.query = "";
-        this.results = [];
-        this.hiddenSpaces = [];
-        this.spaces = [];
-
-        function groupBy(list, keyGetter) {
-            const map = new Map();
-            list.forEach((item) => {
-                const key = keyGetter(item);
-                const collection = map.get(key);
-                if (!collection) {
-                    map.set(key, [item]);
-                } else {
-                    collection.push(item);
-                }
-            });
-            return map;
-        }
-
-        this.on("mount", function () {
-            RiotPolice.requestStore("structure", this);
-            RiotPolice.on("structure.changed", this.update);
-        });
-
-        this.on("update", function () {
-            let spacesMap = groupBy(this.stores.structure.getNodes(), (node) => {return node.group});
-            this.hiddenSpaces = this.stores.structure.getHiddenSpaces();
-            let mapIt = spacesMap[Symbol.iterator]();
-            this.spaces = [];
-            for(let item of mapIt){
-                let hidden = this.hiddenSpaces.includes(item[0])
-                this.spaces.push({name: item[0], length: item[1].length, hidden: hidden})
-            }
-            if(this.stores.structure.is("HIDE_SPACES_ACTIVE")){
-                if(!$(this.root).hasClass("open")){
-                    $(this.root).addClass("open");
-                    $(this.refs.query).focus();
-                }
-            } else {
-                if($(this.root).hasClass("open")){
-                    $(this.root).removeClass("open");
-                }
-            }
-        });
-
-        this.togglePanel = function(){
-            RiotPolice.trigger("structure:hide_spaces_toggle");
-        }
-        this.toggleHide = function(e){
-            RiotPolice.trigger("structure:space_toggle_hide", e.item.space.name);
-        }
-        this.showAll = function(){
-            RiotPolice.trigger("structure:all_spaces_show");
-        }
-
-});
-
-riot.tag2('kg-instance-property', '', 'kg-instance-property,[data-is="kg-instance-property"]{ } kg-instance-property pre,[data-is="kg-instance-property"] pre{ margin: 5px; padding: 5px; } kg-instance-property .string,[data-is="kg-instance-property"] .string{ color: white; word-break: break-all; cursor: default; } kg-instance-property .number,[data-is="kg-instance-property"] .number{ color: red; cursor: default; } kg-instance-property .boolean,[data-is="kg-instance-property"] .boolean{ color: darkorange; cursor: default; } kg-instance-property .null,[data-is="kg-instance-property"] .null{ color: magenta; cursor: default; } kg-instance-property .key,[data-is="kg-instance-property"] .key{ color: #548dde; cursor: default; } kg-instance-property .key a,[data-is="kg-instance-property"] .key a{ color: #548dde; } kg-instance-property .key a:hover,[data-is="kg-instance-property"] .key a:hover{ color: #7eaae7; }', '', function(opts) {
-
-         function syntaxHighlight(json) {
-            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-                var cls = 'number';
-                if (/^"/.test(match)) {
-                    if (/:$/.test(match)) {
-                        cls = 'key';
-                    } else {
-                        cls = 'string';
-                    }
-                } else if (/true|false/.test(match)) {
-                    cls = 'boolean';
-                } else if (/null/.test(match)) {
-                    cls = 'null';
-                }
-                let value = match;
-                let m =  value.match(/".+#(.+":?)$/);
-                if (m && m.length)
-                    value = '"' + m[1];
-                m = value.match(/".+\/v0\/data\/.+\/.+\/(.+)\/.+\/(.+":?)$/);
-                if (m && m.length == 3)
-                    value = '"' + m[1] + ':' + m[2];
-                let l = match.match(/"(https?:\/\/.+)(":?)$/)
-                if (l && l.length == 3)
-                    value = '"<a href="' + l[1] + '" target="_blank">' + value.replace(/":/g, "").replace(/"/g, "") + '</a>' + l[2];
-                return '<span class="' + cls + '" title="' +  match.replace(/"/g,"") + '">' + value + '</span>';
-            });
-        }
-
-        this.updateContent = () => {
-            let value = this.opts.content;
-            if (value != undefined) {
-                if (typeof value === "object" || value instanceof Array) {
-                    value = JSON.stringify(value, undefined, 2);
-                    value = syntaxHighlight(value);
-                    value = '<pre>' + value + '</pre>';
-                }
-                this.root.innerHTML = value;
-            }
-        };
-
-        this.on("mount", function () {
-           this.updateContent();
-        });
-
-        this.on('update', () => {
-            this.updateContent();
-        });
-
-});
-
 riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"> <i class="fa fa-search" aria-hidden="true"></i> </button> <input type="text" class="searchbox" ref="query" onkeyup="{doSearch}"> <div class="results" if="{results.length > 0}"> <div class="title"> Results </div> <ul> <li each="{result in results}"> <a class="{⁗disabled⁗: hiddenTypes.indexOf(result.id) !== -1}" href="#" onclick="{selectResult}" onmouseover="{highlightType}" onmouseout="{unhighlightType}">{result.data.id}</a> <span class="occurrences">{result.data.occurrences}</span> </li> </ul> </div> <div class="no-results" if="{!results.length && !!query}"> Nothing found </div>', 'kg-search-panel.open,[data-is="kg-search-panel"].open{ right: var(--sidebar-width); z-index:10; } kg-search-panel,[data-is="kg-search-panel"]{ padding: 15px 15px; color:white; } kg-search-panel button.open-panel,[data-is="kg-search-panel"] button.open-panel{ position: absolute; top: 10px; left: -40px; width: 40px; height: 40px; line-height: 40px; background: #222; border-radius: 10px 0 0 10px; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; } kg-search-panel .searchbox,[data-is="kg-search-panel"] .searchbox{ appearance: none; -webkit-appearance: none; width: 100%; padding: 0 8px; background: #333; border: #ccc; outline: none; border-radius: 5px; height: 30px; line-height: 30px; color: white; font-size: 16px; } kg-search-panel .results,[data-is="kg-search-panel"] .results{ margin-top: 15px; max-height:calc(100% - 45px); overflow-y:auto; } kg-search-panel ul,[data-is="kg-search-panel"] ul{ font-size: 0.8em; padding-left: 0; list-style: none; } kg-search-panel li,[data-is="kg-search-panel"] li{ padding: 3px 0; line-height: 1; } kg-search-panel .occurrences,[data-is="kg-search-panel"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-search-panel .no-results,[data-is="kg-search-panel"] .no-results{ font-size:1.1em; font-style:italic; margin-top:15px; } kg-search-panel .disabled,[data-is="kg-search-panel"] .disabled{ text-decoration: line-through; color:#aaa; }', '', function(opts) {
         this.query = "";
         this.results = [];
         this.hiddenTypes = [];
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
 
-        this.on("update", function () {
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             this.results = _.orderBy(this.stores.structure.getSearchResults(), result => result.occurrences,'desc');
             this.query = this.stores.structure.getSearchQuery();
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
-            if(this.stores.structure.is("SEARCH_ACTIVE")){
+            if(this.stores.structure.is("SHOW_SEARCH_PANEL")){
                 if(!$(this.root).hasClass("open")){
                     $(this.root).addClass("open");
                     $(this.refs.query).focus();
@@ -54911,7 +54701,7 @@ riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"
         });
 
         this.togglePanel = () => {
-            RiotPolice.trigger("structure:search_toggle");
+            RiotPolice.trigger("structure:search_panel_toggle");
         };
 
         this.doSearch = () => {
@@ -54931,79 +54721,145 @@ riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"
         };
 });
 
-riot.tag2('kg-sidebar', '<div if="{selectedType}" class="{separator: selectedType && typesWithoutRelations.length}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> <button title="Hide the corresponding node" class="hide" onclick="{toggleHide}"><i class="fa {selectedType.hidden?\'fa-eye\':\'fa-eye-slash\'}"></i></button> </div> <div class="title">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="properties">Properties: <ul> <li each="{property in selectedType.properties}" title="{property.name}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.instancesWithoutProp}" class="bar-instances-wo-prop" riot-style="width:{100-property.instancesWithoutProp/selectedType.occurrences*100}%"></div> <div if="{property.instancesWithoutProp}" class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedType.occurrences*100)}% ({selectedType.occurrences-property.instancesWithoutProp})</div> <div if="{!property.instancesWithoutProp}" class="bar-instances-wo-prop" style="width:100%"></div> <div if="{!property.instancesWithoutProp}" class="number-instances-wo-prop">100%</div> </li> </ul> </div> <div class="relations">Relations: <div class="norelations" if="{!sortedRelations.length}"> No relations found </div> <ul> <li each="{relation in sortedRelations}"> <a class="{disabled:hiddenTypes.indexOf(relation.relationId) !== -1}" href="#" onmouseover="{highlightRelation}" onmouseout="{unhighlightNode}" onclick="{selectRelation}">{relation.relationId}</a><span class="occurrences">{relation.relationCount}</span> </li> </ul> </div> </div> <div class="types" if="{typesWithoutRelations.length}">Type(s) without visible relation: <ul> <li each="{type in typesWithoutRelations}"> <a href="#" onmouseover="{highlightNode}" onmouseout="{unhighlightNode}" onclick="{selectNode}">{type.data.id}</a> </li> </ul> </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; margin-bottom:10px; } kg-sidebar .version,[data-is="kg-sidebar"] .version{ font-size:1em; line-height: 1.4em; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin-top:12px; font-size:0.8em; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .separator,[data-is="kg-sidebar"] .separator{ border-bottom: 1px solid white; margin-bottom: 20px; padding-bottom: 10px; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .bar-instances-wo-prop,[data-is="kg-sidebar"] .bar-instances-wo-prop{ position:absolute; top:2px; left:0; height:calc(100% - 4px); width:0%; background:#222; z-index:-1; transition:all 0.5s ease-out; } kg-sidebar .number-instances-wo-prop,[data-is="kg-sidebar"] .number-instances-wo-prop{ position:absolute; top:7px; right:6px; color:white; transition:all 0.5s ease-out; font-size:0.8em; opacity:0; transition:opacity 0.5s ease-out; font-weight: bold; } kg-sidebar .properties li:hover .bar-instances-wo-prop,[data-is="kg-sidebar"] .properties li:hover .bar-instances-wo-prop{ background:#2980b9; } kg-sidebar .properties li:hover .number-instances-wo-prop,[data-is="kg-sidebar"] .properties li:hover .number-instances-wo-prop{ opacity:1; }', '', function(opts) {
+riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> <button title="Hide the corresponding node" class="hide" onclick="{toggleHide}"><i class="fa {selectedType.hidden?\'fa-eye\':\'fa-eye-slash\'}"></i></button> </div> <div class="title" title="{selectedType.id}">{selectedType.name}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="properties">Properties: <ul> <li each="{property in selectedType.properties}" title="{property.name}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.instancesWithoutProp}" class="bar-instances-wo-prop" riot-style="width:{100-property.instancesWithoutProp/selectedType.occurrences*100}%"></div> <div if="{property.instancesWithoutProp}" class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedType.occurrences*100)}% ({selectedType.occurrences-property.instancesWithoutProp})</div> <div if="{!property.instancesWithoutProp}" class="bar-instances-wo-prop" style="width:100%"></div> <div if="{!property.instancesWithoutProp}" class="number-instances-wo-prop">100%</div> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}"> <i class="fa fa-long-arrow-right"><a class="{disabled:hiddenTypes.indexOf(targetType.id) !== -1}" href="#" onmouseover="{highlightRelation}" onmouseout="{unhighlightNode}" onclick="{selectRelation}" title="{targetType.id}">{targetType.name}</a><span class="occurrences">{targetType.occurrences}</span> </li> </ul> </div> </li> </ul> </div> <div class="relations">Relations: <div class="norelations" if="{!selectedType.relations.length}"> No relations found </div> <ul class="links"> <li each="{relation in selectedType.relations}"> <i class="fa fa-long-arrow-right"><a class="{disabled:hiddenTypes.indexOf(relation.targetId) !== -1}" href="#" onmouseover="{highlightRelation}" onmouseout="{unhighlightNode}" onclick="{selectRelation}" title="{relation.targetId}">{relation.targetName}</a><span class="occurrences">{relation.occurrences}</span> </li> </ul> </div> </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; margin-bottom:10px; } kg-sidebar .version,[data-is="kg-sidebar"] .version{ font-size:1em; line-height: 1.4em; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin-top:12px; font-size:0.8em; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li > i.fa:before,[data-is="kg-sidebar"] ul.links > li > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .bar-instances-wo-prop,[data-is="kg-sidebar"] .bar-instances-wo-prop{ position:absolute; top:2px; left:0; height:calc(100% - 4px); width:0%; background:#222; z-index:-1; transition:all 0.5s ease-out; } kg-sidebar .number-instances-wo-prop,[data-is="kg-sidebar"] .number-instances-wo-prop{ position:absolute; top:7px; right:6px; color:white; transition:all 0.5s ease-out; font-size:0.8em; opacity:0; transition:opacity 0.5s ease-out; font-weight: bold; } kg-sidebar .properties li:hover .bar-instances-wo-prop,[data-is="kg-sidebar"] .properties li:hover .bar-instances-wo-prop{ background:#2980b9; } kg-sidebar .properties li:hover .number-instances-wo-prop,[data-is="kg-sidebar"] .properties li:hover .number-instances-wo-prop{ opacity:1; }', '', function(opts) {
         this.selectedType = false;
         this.typesWithoutRelations = [];
         this.hiddenTypes = [];
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
         });
 
-        this.on("unmount", function(){
+        this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
         });
 
-        this.on("update", function () {
-            var self = this;
+        this.on("update", () => {
             this.nodes = this.stores.structure.getNodes();
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
             this.typesWithoutRelations = [];
             this.nodes.forEach(n => {
-                if (!n.hidden && !self.stores.structure.hasRelations(n.id, true)){
-                    self.typesWithoutRelations.push(n);
+                if (!n.hidden && !this.stores.structure.hasRelations(n.id, true)){
+                    this.typesWithoutRelations.push(n);
                 }
             });
-
             this.selectedType = this.stores.structure.getSelectedType();
             if(!this.selectedType){
                 return;
             }
-
-            this.sortedRelations = _.orderBy(this.stores.structure.getRelationsOf(this.selectedType.id), o => o.value, 'desc');
         });
 
-        this.close = function(e){
+        this.close = e => {
             RiotPolice.trigger("structure:node_select", this.selectedType);
         }
-        this.toggleHide = function(e){
+        this.toggleHide = e => {
             RiotPolice.trigger("structure:type_toggle_hide", this.selectedType);
         }
-        this.selectNode = function(e){
+        this.selectNode = e => {
             if (!this.selectedType || this.selectedType.id !==  e.item)
                 RiotPolice.trigger("structure:node_select", e.item);
         }
-        this.highlightNode = function(e){
+        this.highlightNode = e => {
             RiotPolice.trigger("structure:node_highlight", e.item);
         }
-        this.unhighlightNode = function(e){
+        this.unhighlightNode = e => {
             RiotPolice.trigger("structure:node_unhighlight");
         }
 
-        this.selectRelation = function(e){
-            RiotPolice.trigger("structure:node_select", e.item.relation.relationId);
+        this.selectRelation = e => {
+            RiotPolice.trigger("structure:type_select", e.item.relation.targetId);
         }
-        this.highlightRelation = function(e){
-            RiotPolice.trigger("structure:node_highlight", e.item.relation.relationId);
+        this.highlightRelation = e => {
+            RiotPolice.trigger("structure:type_highlight", e.item.relation.targetId);
         }
 
-        this.unhighlightNode = function(e){
-            RiotPolice.trigger("structure:node_unhighlight");
+        this.unhighlightNode = e => {
+            RiotPolice.trigger("structure:type_unhighlight");
         }
+});
+
+riot.tag2('kg-spaces-panel', '<button class="open-panel" onclick="{togglePanel}"> <i class="fa fa-share-alt reverse" aria-hidden="true"></i> <span class="bubble">{hiddenSpaces.length}</span> </button> <div class="title"> Spaces visibility <div class="actions"> <button class="show-all" onclick="{showAll}">Show all</button> </div> </div> <div class="spacelist"> <ul> <li each="{space in Array.from(spaces)}"> <a class="{⁗disabled⁗: space.hidden}" href="#" onclick="{toggleHide}" onmouseover="{highlightSpace}" onmouseout="{unhighlightSpace}"> {space.name} </a> <span class="occurrences">{space.length}</span> </li> </ul> </div>', 'kg-spaces-panel.open,[data-is="kg-spaces-panel"].open{ right: var(--sidebar-width); z-index:10; } kg-spaces-panel,[data-is="kg-spaces-panel"]{ padding: 15px 15px; color:white; } kg-spaces-panel button.open-panel,[data-is="kg-spaces-panel"] button.open-panel{ position: absolute; top: 110px; left: -40px; width: 40px; height: 40px; line-height: 40px; background: #222; border-radius: 10px 0 0 10px; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; } kg-spaces-panel .open-panel .bubble,[data-is="kg-spaces-panel"] .open-panel .bubble{ position:absolute; display:block; background-color:#444; border-radius:10px; height:15px; line-height:15px; font-size:10px; font-weight:bold; top:5px; right:5px; padding:0 4px; } kg-spaces-panel .types,[data-is="kg-spaces-panel"] .types{ margin-top: 15px; max-height:calc(100% - 45px); overflow-y:auto; } kg-spaces-panel ul,[data-is="kg-spaces-panel"] ul{ font-size: 0.8em; padding-left: 0; list-style: none; } kg-spaces-panel li,[data-is="kg-spaces-panel"] li{ padding: 3px 0; line-height: 1; } kg-spaces-panel .occurrences,[data-is="kg-spaces-panel"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-spaces-panel .spacelist,[data-is="kg-spaces-panel"] .spacelist{ margin-top: 0; max-height:calc(100% - 51px); overflow-y:auto; } kg-spaces-panel .disabled,[data-is="kg-spaces-panel"] .disabled{ text-decoration: line-through; color:#aaa; } kg-spaces-panel .actions,[data-is="kg-spaces-panel"] .actions{ overflow:hidden; margin-top:15px; } kg-spaces-panel .actions button,[data-is="kg-spaces-panel"] .actions button{ width:50%; height:30px; line-height:30px; padding:0; font-size:14px; display:block; float:left; -webkit-appearance:none; appearance:none; background:#111; color:white; border:0; border-radius: 5px; transition:background-color 0.25s ease-out; cursor:pointer; outline:none; } kg-spaces-panel .actions button:hover,[data-is="kg-spaces-panel"] .actions button:hover{ background:#333; } kg-spaces-panel .reverse,[data-is="kg-spaces-panel"] .reverse{ transform: rotate(180deg); }', '', function(opts) {
+        this.query = "";
+        this.results = [];
+        this.hiddenSpaces = [];
+        this.spaces = [];
+
+        function groupBy(list, keyGetter) {
+            const map = new Map();
+            list.forEach((item) => {
+                const key = keyGetter(item);
+                const collection = map.get(key);
+                if (!collection) {
+                    map.set(key, [item]);
+                } else {
+                    collection.push(item);
+                }
+            });
+            return map;
+        }
+
+        this.on("mount", () => {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
+            let spacesMap = groupBy(this.stores.structure.getNodes(), (node) => {return node.group});
+            this.hiddenSpaces = this.stores.structure.getHiddenSpaces();
+            let mapIt = spacesMap[Symbol.iterator]();
+            this.spaces = [];
+            for(let item of mapIt){
+                let hidden = this.hiddenSpaces.includes(item[0])
+                this.spaces.push({name: item[0], length: item[1].length, hidden: hidden})
+            }
+            if(this.stores.structure.is("SHOW_SPACES_PANEL")){
+                if(!$(this.root).hasClass("open")){
+                    $(this.root).addClass("open");
+                    $(this.refs.query).focus();
+                }
+            } else {
+                if($(this.root).hasClass("open")){
+                    $(this.root).removeClass("open");
+                }
+            }
+        });
+
+        this.togglePanel = () => {
+            RiotPolice.trigger("structure:spaces_panel_toggle");
+        }
+        this.toggleHide = e => {
+            RiotPolice.trigger("structure:space_toggle_hide", e.item.space.name);
+        }
+        this.showAll = () => {
+            RiotPolice.trigger("structure:all_spaces_show");
+        }
+
 });
 
 riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <kg-view-mode if="{isLoaded}"></kg-view-mode> <div class="header-right" if="{isLoaded}"> <div class="date" if="{date}">KG State at : {date}</div> <button class="refresh" onclick="{refresh}"> <i class="fa fa-refresh">&nbsp;Refresh</i> </button> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); } kg-topbar button.refresh,[data-is="kg-topbar"] button.refresh{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #333; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-topbar button.refresh:hover,[data-is="kg-topbar"] button.refresh:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
         this.date = "";
         this.isLoaded = false;
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
-        this.on("update", function(){
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
          this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED")
          this.date = this.stores.structure.getLastUpdate();
         });
@@ -55011,14 +54867,71 @@ riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src=
         this.refresh = e => RiotPolice.trigger("structure:load");
 });
 
-riot.tag2('kg-view-mode', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: groupViewMode}" onclick="{toggle}" title="group by space"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !groupViewMode}" onclick="{toggle}" title="hide spaces"> <i class="fa fa-close"></i> </button> </div> <span>group by space</span> </div>', 'kg-view-mode,[data-is="kg-view-mode"]{ display:block; color: white; } kg-view-mode .group-view__toggle,[data-is="kg-view-mode"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #141618; } kg-view-mode button.group-view__toggle__button,[data-is="kg-view-mode"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-view-mode button.group-view__toggle__button.selected,[data-is="kg-view-mode"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-view-mode span,[data-is="kg-view-mode"] span{ padding-left: 3px; }', '', function(opts) {
-        this.groupViewMode = false;
+riot.tag2('kg-types-panel', '<button class="open-panel" onclick="{togglePanel}"> <i class="fa fa-eye-slash" aria-hidden="true"></i> <span class="bubble">{hiddenTypes.length}</span> </button> <div class="title"> Nodes visibility <div class="actions"> <button class="hide-all" onclick="{hideAll}">Hide all</button> <button class="show-all" onclick="{showAll}">Show all</button> </div> </div> <div class="nodelist"> <ul> <li each="{node in nodes}"> <a class="{⁗disabled⁗: node.hidden}" href="#" onclick="{toggleHide}" onmouseover="{highlightNode}" onmouseout="{unhighlightNode}"> {node.type.id} </a> <span class="occurrences">{node.type.occurrences}</span> </li> </ul> </div>', 'kg-types-panel.open,[data-is="kg-types-panel"].open{ right: var(--sidebar-width); z-index:10; } kg-types-panel,[data-is="kg-types-panel"]{ padding: 15px 15px; color:white; } kg-types-panel button.open-panel,[data-is="kg-types-panel"] button.open-panel{ position: absolute; top: 60px; left: -40px; width: 40px; height: 40px; line-height: 40px; background: #222; border-radius: 10px 0 0 10px; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; } kg-types-panel .open-panel .bubble,[data-is="kg-types-panel"] .open-panel .bubble{ position:absolute; display:block; background-color:#444; border-radius:10px; height:15px; line-height:15px; font-size:10px; font-weight:bold; top:5px; right:5px; padding:0 4px; } kg-types-panel .types,[data-is="kg-types-panel"] .types{ margin-top: 15px; max-height:calc(100% - 51px); overflow-y:auto; } kg-types-panel ul,[data-is="kg-types-panel"] ul{ font-size: 0.8em; padding-left: 0; list-style: none; } kg-types-panel li,[data-is="kg-types-panel"] li{ padding: 3px 0; line-height: 1; } kg-types-panel .occurrences,[data-is="kg-types-panel"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-types-panel .nodelist,[data-is="kg-types-panel"] .nodelist{ margin-top: 0; max-height:calc(100% - 45px); overflow-y:auto; } kg-types-panel .disabled,[data-is="kg-types-panel"] .disabled{ text-decoration: line-through; color:#aaa; } kg-types-panel .actions,[data-is="kg-types-panel"] .actions{ overflow:hidden; margin-top:15px; } kg-types-panel .actions button,[data-is="kg-types-panel"] .actions button{ width:50%; height:30px; line-height:30px; padding:0; font-size:14px; display:block; float:left; -webkit-appearance:none; appearance:none; background:#111; color:white; border:0; border-radius: 5px 0 0 5px; transition:background-color 0.25s ease-out; cursor:pointer; outline:none; } kg-types-panel .actions button:hover,[data-is="kg-types-panel"] .actions button:hover{ background:#333; } kg-types-panel .actions button:last-child,[data-is="kg-types-panel"] .actions button:last-child{ border-radius: 0 5px 5px 0; border-left:1px solid #222; }', '', function(opts) {
+        this.query = "";
+        this.results = [];
+        this.hiddenTypes = [];
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
-        this.on("update", function(){
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
+            this.nodes = _.orderBy(this.stores.structure.getNodes(), 'occurrences', 'desc');
+            this.hiddenTypes = this.stores.structure.getHiddenTypes();
+
+            if(this.stores.structure.is("SHOW_TYPES_PANEL")){
+                if(!$(this.root).hasClass("open")){
+                    $(this.root).addClass("open");
+                    $(this.refs.query).focus();
+                }
+            } else {
+                if($(this.root).hasClass("open")){
+                    $(this.root).removeClass("open");
+                }
+            }
+        });
+
+        this.togglePanel = () => {
+            RiotPolice.trigger("structure:types_panel_toggle");
+        }
+        this.toggleHide = e => {
+            RiotPolice.trigger("structure:type_toggle_hide", e.item.node);
+        }
+        this.hideAll = () => {
+            RiotPolice.trigger("structure:all_types_toggle_hide", true);
+        }
+        this.showAll = () => {
+            RiotPolice.trigger("structure:all_types_toggle_hide", false);
+        }
+        this.highlightNode = e => {
+            RiotPolice.trigger("structure:node_highlight", e.item.node);
+        }
+        this.unhighlightNode = e => {
+            RiotPolice.trigger("structure:node_unhighlight");
+        }
+});
+
+riot.tag2('kg-view-mode', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: groupViewMode}" onclick="{toggle}" title="group by space"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !groupViewMode}" onclick="{toggle}" title="hide spaces"> <i class="fa fa-close"></i> </button> </div> <span>group by space</span> </div>', 'kg-view-mode,[data-is="kg-view-mode"]{ display:block; color: white; } kg-view-mode .group-view__toggle,[data-is="kg-view-mode"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #141618; } kg-view-mode button.group-view__toggle__button,[data-is="kg-view-mode"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-view-mode button.group-view__toggle__button.selected,[data-is="kg-view-mode"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-view-mode span,[data-is="kg-view-mode"] span{ padding-left: 3px; }', '', function(opts) {
+        this.groupViewMode = false;
+
+        this.on("mount", () => {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
             this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
         });
         this.toggle = () => RiotPolice.trigger("structure:toggle_group_view_mode");

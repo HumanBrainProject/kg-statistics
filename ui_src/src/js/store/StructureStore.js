@@ -16,11 +16,12 @@
 
 (function () {
     let types = {};
+    let structure = {
+        nodes: [],
+        groupedNodes: [],
+        links: []
+    };
     let selectedType = null;
-    let defaultViewModeNodes = [];
-    let defaultViewModeLinks = [];
-    let defaultViewModeRelations = [];
-    let groupViewModeNodes = [];
     let groupViewModeLinks = [];
     let groupViewModeRelations = [];
     let lastUpdate = null;
@@ -61,8 +62,7 @@
 
     const generateGroupViewData = () => {
 
-        const nodes = groupViewModeNodes;
-        const relations = groupViewModeRelations;
+        const nodes = structure.groupedNodes;
 
         const groups = getGroups(nodes);
 
@@ -73,10 +73,10 @@
             //Hidding nodes with too many connections
             nodes.forEach(node => {
                 node.hidden = false;
-                if (relations[node.id] !== undefined &&
+                if (node.relations.length &&
                     whitelist.indexOf(node.id) < 0 &&
                     groups[node.group].value.length > minNodeCounts &&
-                    relations[node.id].length / groups[node.group].value.length > AppConfig.structure.autoHideThreshold
+                    node.relations.length / groups[node.group].value.length > AppConfig.structure.autoHideThreshold
                 ) {
                     toBeHidden.push(node.id);
                 }
@@ -88,7 +88,7 @@
 
         nodes.forEach(node => {
             node.hidden = false;
-            if (relations[node.id] !== undefined &&
+            if (node.relations.length &&
                 whitelist.indexOf(node.id) < 0 &&
                 groups[node.group].hidden ||
                 toBeHidden.includes(node.id)
@@ -108,8 +108,7 @@
 
     const generateDefaultViewData = () => {
 
-        const nodes = defaultViewModeNodes;
-        const relations = defaultViewModeRelations;
+        const nodes = structure.nodes;
 
         let toBeHidden;
         //First use
@@ -118,9 +117,9 @@
             //Hidding nodes with too many connections
             nodes.forEach(node => {
                 node.hidden = false;
-                if (relations[node.id] !== undefined &&
+                if (node.relations.length &&
                     whitelist.indexOf(node.id) < 0 &&
-                    relations[node.id].length / defaultViewModeNodes.length > AppConfig.structure.autoHideThreshold
+                    node.relations.length / structure.nodes.length > AppConfig.structure.autoHideThreshold
                 ) {
                     toBeHidden.push(node.id);
                 }
@@ -132,15 +131,15 @@
 
         nodes.forEach(node => {
             node.hidden = false;
-            if (relations[node.id] !== undefined &&
-                whitelist.indexOf(node.id) < 0 &&
-                toBeHidden.includes(node.id)
+            if (node.relations.length &&
+                whitelist.indexOf(node.type.id) < 0 &&
+                toBeHidden.includes(node.type.id)
             ) {
                 node.hidden = true;
             }
         });
 
-        hiddenTypes = _(nodes).filter(node => node.hidden).map(node => node.id).value();
+        hiddenTypes = _(nodes).filter(node => node.hidden).map(node => node.type.id).value();
     };
 
 
@@ -157,17 +156,16 @@
         return hash;
     };
 
-    const simplifySemantics = type => {
-        const result = {
-            id: type["http://schema.org/identifier"],
-            name: type["http://schema.org/name"],
-            occurrences: type["https://kg.ebrains.eu/vocab/meta/occurrences"],
+    const simplifySemantics = rawtype => {
+        const type = {
+            id: rawtype["http://schema.org/identifier"],
+            name: rawtype["http://schema.org/name"],
+            occurrences: rawtype["https://kg.ebrains.eu/vocab/meta/occurrences"],
             properties: [],
-            links: [],
             spaces: []
         };
-        if (type["https://kg.ebrains.eu/vocab/meta/properties"]) {
-            result.properties = type["https://kg.ebrains.eu/vocab/meta/properties"].map(property => ({
+        if (rawtype["https://kg.ebrains.eu/vocab/meta/properties"]) {
+            type.properties = rawtype["https://kg.ebrains.eu/vocab/meta/properties"].map(property => ({
                 id: property["http://schema.org/identifier"],
                 name: property["http://schema.org/name"],
                 occurrences: property["https://kg.ebrains.eu/vocab/meta/occurrences"],
@@ -177,151 +175,115 @@
                 }))
             }));
         }
-        if (type["https://kg.ebrains.eu/vocab/meta/links"]) {
-            result.links = type["https://kg.ebrains.eu/vocab/meta/links"].map(link => ({
-                id: link["http://schema.org/identifier"],
-                name: link["http://schema.org/name"],
-                targetType: link["https://kg.ebrains.eu/vocab/meta/targetType"],
-                occurrences: link["https://kg.ebrains.eu/vocab/meta/occurrences"]
+        if (rawtype["https://kg.ebrains.eu/vocab/meta/spaces"]) {
+            type.spaces = rawtype["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
+                name: space["http://schema.org/name"],
+                occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
             }));
         }
-        if (type["https://kg.ebrains.eu/vocab/meta/spaces"]) {
-            result.spaces = type["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => {
-                const res = {
-                    name: space["http://schema.org/name"],
-                    occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"],
-                    links: []
-                };
-                if (space["https://kg.ebrains.eu/vocab/meta/links"]) {
-                    res.links = space["https://kg.ebrains.eu/vocab/meta/links"].map(link => ({
-                        id: link["http://schema.org/identifier"],
-                        name: link["http://schema.org/name"],
-                        targetType: link["https://kg.ebrains.eu/vocab/meta/targetType"],
-                        targetSpace: link["https://kg.ebrains.eu/vocab/meta/targetSpace"]
-                    }));
+        return type;
+    };
+
+    const addRelations = type => {
+        const relations = type.properties.reduce((acc, property) => {
+            const provenance = property.id.startsWith(AppConfig.structure.provenance);
+            property.targetTypes.forEach(targetType => {
+                if (!acc[targetType.id]) {
+                    const target = types[targetType.id];
+                    targetType.name = target?target.name:targetType.id;
+                    acc[targetType.id] = {
+                        occurrences: 0,
+                        targetId: targetType.id,
+                        targetName: targetType.name,
+                        provenance: provenance
+                    }
                 }
-                return res;
+                acc[targetType.id].occurrences += targetType.occurrences;
             });
-        }
-        return result;
-    };
+            return acc;
+        }, {});
+        type.relations = Object.values(relations);
+    }
 
-    const buildRelations = links => {
-        const relations = {};
-        links.forEach(link => {
-            if (relations[link.source.id] === undefined) {
-                relations[link.source.id] = [];
-            }
-            relations[link.source.id].push({
-                ...link,
-                related: link.target
-            });
-            if (relations[link.target.id] === undefined) {
-                relations[link.target.id] = [];
-            }
-            if (link.source !== link.target) {
-                relations[link.target.id].push({
-                    ...link,
-                    related: link.source
+    const buildStructure = data => {
+    
+        types = data.data.reduce((acc, rawType) => {
+            const type = simplifySemantics(rawType);
+            acc[type.id] = type;
+            return acc;
+        }, {});
+
+        const typesList = Object.values(types);
+
+        typesList.forEach(type => addRelations(type));
+        
+        const nodes = typesList.reduce((acc, type) => {
+            const hash = hashCode(type.id);
+            acc[type.id] = {
+                hash: hash,
+                typeHash: hash,
+                name: type.name,
+                occurrences: type.occurrences,
+                type: type,
+                relations: []
+            };
+            return acc
+        }, {});
+
+        typesList.forEach(type => {
+            const node = nodes[type.id];
+            node.relations = type.relations.map(relation => nodes[relation.targetId]);
+        });
+        
+        const links = typesList.reduce((acc, type) => {
+            const sourceNode = nodes[type.id];
+            type.relations
+                .forEach(relation => {
+                    if (relation.target !== type.id) {
+                        const targetNode = nodes[relation.targetId];
+                        const key = type.id + "-" + relation.targetId;
+                        if (!acc[key]) {
+                            acc[key] = {
+                                occurrences: 0,
+                                source: sourceNode,
+                                target: targetNode,
+                                provenance: relation.provenance
+                            }
+                        }
+                        acc[key].occurrences += relation.occurrences;
+                    }
                 });
-            }
-        });
-        return relations;
+            return acc;
+        }, {});
+
+        const groupedNodes = typesList.reduce((acc, type) => {
+            type.spaces.forEach(space => {
+                acc.push({
+                    hash: hashCode(space.name + "/" + type.id),
+                    typeHash: hashCode(type.id),
+                    name: type.name,
+                    occurrences: space.occurrences,
+                    group: space.name,
+                    type: type,
+                    relations: []
+                });
+            });
+            return acc;
+        }, []);
+
+        structure = {
+            nodes: Object.values(nodes),
+            groupedNodes: groupedNodes,
+            links: Object.values(links)
+        };
     };
-
-
-  const buildStructure = data => {
-    types = {};
-    defaultViewModeNodes = [];
-    defaultViewModeLinks = [];
-    defaultViewModeRelations = {};
-    groupViewModeNodes = [];
-    groupViewModeLinks = [];
-    groupViewModeRelations = {};
-    data.data.forEach(rawType => {
-      const type = {
-        ...simplifySemantics(rawType),
-        isLoading: false,
-        isLoaded: false,
-        error: null
-      };
-      types[type.id] = type;
-      const typeHash = hashCode(type.id);
-      const hash = typeHash;
-      const node = {
-        hash: hash,
-        typeHash: typeHash,
-        data: {
-          id: type.id,
-          name: type.name,
-          occurrences: type.occurrences
-        }
-      };
-      defaultViewModeNodes.push(node);
-      defaultViewModeLinks = type.links.map(link => {
-        const targetHash = hashCode(link.targetType);
-        return {
-          id: link.id,
-          name: link.name,
-          provenance: link.name !== undefined && link.name.startsWith(PROVENENCE_SEMANTIC),
-          value: link.occurrences,
-          source: {
-            id: link.id,
-            hash: hash,
-            typeHash: typeHash
-          },
-          target: {
-            id: link.type,
-            hash: targetHash,
-            typeHash: targetHash
-          }
-        };
-      });
-      type.spaces.forEach(space => {
-        const groupViewModeNode = {
-          hash: hashCode(space.name + "/" + type.id),
-          typeHash: typeHash,
-          data: {
-            id: type.id,
-            name: type.name,
-            occurrences: space.occurrences,
-            group: space.name
-          }
-        };
-        groupViewModeNodes.push(groupViewModeNode);
-        space.links.forEach(link => {
-          const targetTypeHash = hashCode(link.targetType);
-          const groupViewModeLink = {
-            id: link.id,
-            name: link.name,
-            provenance: link.name !== undefined && link.name.startsWith(PROVENENCE_SEMANTIC),
-            source: {
-              id: type.id,
-              group: space.name,
-              hash: hash,
-              typeHash: typeHash
-            },
-            target: {
-              id: link.targetType,
-              group: link.targetGroup,
-              hash: hashCode(space.name + "/" + link.targetType),
-              typeHash: targetTypeHash
-            }
-          };
-          groupViewModeLinks.push(groupViewModeLink);
-        });
-      });
-    });
-    groupViewModeRelations = buildRelations(groupViewModeLinks);
-    defaultViewModeRelations = buildRelations(defaultViewModeLinks);
-  };
 
     const loadStructure = () => {
         if (!structureStore.is("STRUCTURE_LOADING")) {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/types?stage=LIVE&withProperties=false`)
+            fetch(`/api/types?stage=LIVE&withProperties=true`)
                 .then(response => response.json())
                 .then(data => {
                     buildStructure(data);
@@ -340,48 +302,19 @@
         }
     };
 
-    const loadType = type => {
-        if (!type.isLoaded && !type.isLoading) {
-            if (!structureStore.is("TYPE_LOADING")) {
-                type.error = null;
-                type.isLoading = true;
-                structureStore.toggleState("TYPE_LOADING", true);
-                structureStore.toggleState("TYPE_ERROR", false);
-                structureStore.notifyChange();
-                fetch(`/api/typesByName?stage=LIVE&withProperties=true&name=${type.id}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        const definition = simplifySemantics(data.data);
-                        type.properties = definition.properties.sort((a, b) => b.occurrences - a.occurrences);
-                        type.isLoaded = true;
-                        type.isLoading = false;
-                        structureStore.toggleState("TYPE_LOADED", false);
-                        structureStore.toggleState("TYPE_LOADING", false);
-                        structureStore.notifyChange();
-                    })
-                    .catch(e => {
-                        type.error = e;
-                        type.isLoading = false;
-                        structureStore.toggleState("TYPE_ERROR", true);
-                        structureStore.toggleState("TYPE_LOADED", false);
-                        structureStore.toggleState("TYPE_LOADING", false);
-                        structureStore.notifyChange();
-                    });
-            }
-        }
-    };
-
     const getTypes = () => Object.values(types);
 
-    const getNodes = () => groupViewMode ? groupViewModeNodes : defaultViewModeNodes;
+    const getStructure = () => groupViewMode ? {nodes: structure.groupedNodes, links: []} : {nodes: structure.nodes, links: structure.links};
 
-    const getLinks = () => groupViewMode ? groupViewModeLinks : defaultViewModeLinks;
+    const getNodes = () => groupViewMode ? structure.groupedNodes : structure.nodes;
 
-    const getRelations = () => groupViewMode ? groupViewModeRelations : defaultViewModeRelations;
+    const getLinks = () => groupViewMode ? groupViewModeLinks : structure.links;
 
-    const getRelationsOf = id => {
-        const relations = getRelations();
-        const rel = getRelations()[id];
+    const getRelations2 = () => ({});
+
+    const getRelations2Of = id => {
+        const relations = getRelations2();
+        const rel = getRelations2()[id];
         if (!rel) {
             return [];
         }
@@ -399,9 +332,8 @@
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
-            "TYPE_LOADING", "TYPE_LOADED", "TYPE_ERROR",
             "SELECTED_NODE", "NODE_HIGHLIGHTED",
-            "GROUP_VIEW_MODE", "SEARCH_ACTIVE", "HIDE_ACTIVE", "HIDE_SPACES_ACTIVE"
+            "GROUP_VIEW_MODE", "SHOW_SEARCH_PANEL", "SHOW_TYPES_PANEL", "SHOW_SPACES_PANEL"
         ],
         init, reset);
 
@@ -423,9 +355,8 @@
             structureStore.toggleState("NODE_HIGHLIGHTED", false);
             highlightedNode = undefined;
             structureStore.toggleState("SELECTED_NODE", !!node);
-            structureStore.toggleState("SEARCH_ACTIVE", false);
-            selectedType = types[node.data.id];
-            loadType(selectedType);
+            structureStore.toggleState("SHOW_SEARCH_PANEL", false);
+            selectedType = node.type;
             selectedNode = node;
         } else {
             structureStore.toggleState("NODE_HIGHLIGHTED", false);
@@ -452,7 +383,7 @@
     structureStore.addAction("structure:search", query => {
         if (query) {
             searchQuery = query;
-            searchResults = _.filter(defaultViewModeNodes, node => node.data.id.match(new RegExp(query, "gi")));
+            searchResults = _.filter(structure.nodes, node => node.type.id.match(new RegExp(query, "gi")));
         } else {
             searchQuery = query;
             searchResults = [];
@@ -460,17 +391,17 @@
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:search_toggle", () => {
-        structureStore.toggleState("SEARCH_ACTIVE");
+    structureStore.addAction("structure:search_panel_toggle", () => {
+        structureStore.toggleState("SHOW_SEARCH_PANEL");
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:hide_toggle", () => {
-        structureStore.toggleState("HIDE_ACTIVE");
+    structureStore.addAction("structure:types_panel_toggle", () => {
+        structureStore.toggleState("SHOW_TYPES_PANEL");
         structureStore.notifyChange();
     });
-    structureStore.addAction("structure:hide_spaces_toggle", () => {
-        structureStore.toggleState("HIDE_SPACES_ACTIVE");
+    structureStore.addAction("structure:spaces_panel_toggle", () => {
+        structureStore.toggleState("SHOW_SPACES_PANEL");
         structureStore.notifyChange();
     });
 
@@ -517,13 +448,13 @@
         highlightedNode = undefined;
         structureStore.toggleState("SELECTED_NODE", false);
         selectedNode = undefined;
-        defaultViewModeNodes.forEach(node => { node.hidden = !!hide });
-        hiddenTypes = _(defaultViewModeNodes).filter(node => node.hidden).map(node => node.id).value();
+        structure.nodes.forEach(node => { node.hidden = !!hide });
+        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
         localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
         if (!hide) {
             hiddenSpaces = [];
         } else {
-            hiddenSpaces = Object.keys(getGroups(defaultViewModeNodes));
+            hiddenSpaces = Object.keys(getGroups(structure.nodes));
         }
         localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
         structureStore.notifyChange();
@@ -554,7 +485,7 @@
      */
 
     structureStore.addInterface("getLastUpdate", () => lastUpdate);
-
+    
     structureStore.addInterface("getSelectedType", () => selectedType);
 
     structureStore.addInterface("getSelectedNode", () => selectedNode);
@@ -562,6 +493,8 @@
     structureStore.addInterface("getHighlightedNode", () => highlightedNode);
 
     structureStore.addInterface("getTypes", getTypes);
+
+    structureStore.addInterface("getStructure", getStructure);
 
     structureStore.addInterface("getNodes", getNodes);
 
@@ -571,14 +504,14 @@
 
     structureStore.addInterface("getHiddenSpaces", () => hiddenSpaces);
 
-    structureStore.addInterface("getRelationsOf", getRelationsOf);
+    structureStore.addInterface("getRelations2Of", getRelations2Of);
 
     structureStore.addInterface("hasRelations", (id, filterHidden) => {
         if (filterHidden) {
-            const relations = _(getRelationsOf(id)).filter(rel => hiddenTypes.indexOf(rel.relatedType) === -1).value();
+            const relations = _(getRelations2Of(id)).filter(rel => hiddenTypes.indexOf(rel.relatedType) === -1).value();
             return !!relations.length;
         } else {
-            return getRelationsOf(id).length;
+            return getRelations2Of(id).length;
         }
     });
 

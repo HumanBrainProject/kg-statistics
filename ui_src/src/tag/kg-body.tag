@@ -215,6 +215,7 @@
 
     <script>
         let self = this;
+        this.toto = "Wirkd";
 
         const maxLinkSize = 40;
         const maxNodeSize = 60;
@@ -243,17 +244,18 @@
         this.initialZoom = 1;
         this.groupInitialZoom = 0.5; //0.3;
 
-        this.on("mount", () =>  {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
-            this.draw();
+            this.update();
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
         });
 
         this.on("update", () => {
-            this.draw();
-        });
-
-        this.draw = () => {
             if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
@@ -262,15 +264,16 @@
             this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
             const previousLastUpdate = this.lastUpdate;
             this.lastUpdate = this.stores.structure.getLastUpdate();
-            var nodes = this.stores.structure.getNodes();
-            var links = this.stores.structure.getLinks();
+            var structure = this.stores.structure.getStructure();
+            var nodes = structure.nodes;
+            var links = structure.links;
 
             let previousHiddenTypesCount = this.hiddenTypes.length;
             this.hiddenTypes = this.stores.structure.getHiddenTypes();
 
             //Calculating the max numberof instance and link values
             //to prepare a scale for the node radius and link width
-            var nodesNumOfInstances = nodes.map(o => o.data.occurrences);
+            var nodesNumOfInstances = nodes.map(o => o.occurrences);
             var linkValues = links.map(o => o.occurrences);
             nodeRscale = d3.scaleLog()
                 .domain([1,d3.max(nodesNumOfInstances)])
@@ -280,14 +283,16 @@
                 .range([3,maxLinkSize])
 
             if (!this.svg || previousHiddenTypesCount !== this.hiddenTypes.length || this.groupViewMode !== previousGroupViewMode || this.lastUpdate !== previousLastUpdate) {
+                this.nodes = nodes;
+                this.links = links;
+                /*
                 this.nodes = _.filter(nodes, node => !node.hidden);
                 this.links = _.filter(_.cloneDeep(links), link => this.hiddenTypes.indexOf(link.source.id) ===
                     -1 && this.hiddenTypes.indexOf(link.target.id) === -1);
+                */
                 $(this.refs.svg).empty().css({
                     opacity: 0
                 });
-                //Avoid trying to represent nodes linked to themselves
-                this.links = _.filter(this.links, link => link.source.id !== link.target.id);
                 this.firstDraw();
                 $(this.refs.svg).animate({
                     opacity: 1
@@ -333,7 +338,7 @@
             }
 
             this.svg.selectAll(".searchResult").classed("searchResult", false);
-            if (this.stores.structure.is("SEARCH_ACTIVE")) {
+            if (this.stores.structure.is("SHOW_SEARCH_PANEL")) {
                 this.searchResults = this.stores.structure.getSearchResults();
                 this.searchResults.forEach(node => {
                     this.svg.selectAll(".is-type_" + node.typeHash).classed("searchResult", true);
@@ -341,7 +346,7 @@
             } else {
                 this.searchResults = [];
             }
-        };
+        });
 
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
@@ -353,7 +358,7 @@
                     zoom).scale(zoomScaleTo));
         }
 
-        $(document).on("keydown", (e) => {
+        $(document).on("keydown", e => {
             if (e.shiftKey && e.ctrlKey && e.keyCode == 67) {
                 if (!this.blockDownload) {
                     this.blockDownload = true;
@@ -432,7 +437,7 @@
             var groupIds = [];
             if (this.groupViewMode) {
                 // Grouping nodes by organization
-                groupIds = d3.nest().key((n) => n.data.group ).entries(this.nodes);
+                groupIds = d3.nest().key((n) => n.group ).entries(this.nodes);
             }
 
             self.simulation = d3.forceSimulation(nodes)
@@ -446,7 +451,7 @@
                     .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
-                    .radius(d => nodeRscale(d.data.occurrences) + 8)
+                    .radius(d => nodeRscale(d.occurrences) + 8)
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
@@ -507,18 +512,20 @@
 
             // Assigning data and behaviour to the different SVG elements
             function restart() {
-                
+
                 links = linksg
                 .selectAll(".link-line")
                 .data(self.links)
                 .enter().append("line")
                 .attr("class", "link-line")
-                .each(d => {
+                .each(function(d) {
                     d3.select(this).classed("related-to_" + d.source.hash, true);
                     d3.select(this).classed("related-to_" + d.target.hash, true);
+                    d3.select(this).classed("related-to-type_" + d.source.typeHash, true);
+                    d3.select(this).classed("related-to-type_" + d.target.typeHash, true);
                     d3.select(this).classed("provenance", d.provenance)
                 })
-                .attr("stroke-width", d => linkRscale(d.value))
+                .attr("stroke-width", d => linkRscale(d.occurrences))
                 .on("mouseover", d => {
                     if (d.target.group == d.source.group){
                         self.hullName = d.source.group
@@ -537,18 +544,18 @@
                     .data(self.links)
                     .enter().append("g")
                     .attr("class", "link-node")
-                    .each(d => {
+                    .each(function(d) {
                         let $this = d3.select(this);
 
-                        circle = $this.append("circle");
-                        circle.attr("class", "link-node__circle")
-                            .attr("r", 10);
-                        circle.classed("provenance", d.provenance);
+                        $this.append("circle")
+                            .attr("class", "link-node__circle")
+                            .attr("r", 10)
+                            .classed("provenance", d.provenance);
 
                         $this.append("text")
                             .attr("class", "link-node__text")
                             .attr("text-anchor", "middle")
-                            .text(d.value);
+                            .text(d.occurrences);
                         $this.append("title").text(d.name);
 
                         d3.select(this).classed("related-to_" + d.source.hash, true);
@@ -580,25 +587,26 @@
                         let $this = d3.select(this);
                         $this.append("circle")
                             .attr("class", "node__circle")
-                            .attr("r", d => nodeRscale(d.data.occurrences))
-                            .append('title').text(d.data.id);
+                            .attr("r", d => nodeRscale(d.occurrences))
+                            .append('title').text(d.name);
 
                         $this.append("text")
                             .attr("class", "node__label")
                             .attr("text-anchor", "middle")
-                            .text(d.data.name);
+                            .text(d.name);
 
                         $this.append("text")
                             .attr("class", "node__occurrences")
                             .attr("text-anchor", "middle")
-                            .text(d.data.occurrences);
+                            .text(d.occurrences);
 
                         d3.select(this).classed("is_" + d.hash, true);
                         d3.select(this).classed("is-type_" + d.typeHash, true);
                         d3.select(this).classed("related-to_" + d.hash, true);
                         d3.select(this).classed("related-to-type_" + d.typeHash, true);
-                        self.stores.structure.getRelationsOf(d.id).forEach(relation => {
-                            d3.select(this).classed("related-to_" + relation.related.typeHash, true);
+                        d.relations.forEach(relation => {
+                            d3.select(this).classed("related-to_" + relation.hash, true);
+                            d3.select(this).classed("related-to-type_" + relation.typeHash, true);
                         });
 
                     })
@@ -608,7 +616,7 @@
                         .on("end", dragended))
                     .on("mouseover", d => {
                         self.view
-                            .selectAll(".node:not(.related-to_" + d.hash + "), .link-node:not(.related-to_" + d.hash + "), .link-line:not(.related-to_" + d.hash + ")")
+                            .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
                             .classed("dephased", true);
                         self.hullName = d.group
                         self.update()
@@ -662,8 +670,8 @@
                 //Regrouping nodes by private spaces
                 var coordMap = new Map();
                 nodes.each(node => {
-                    const coord = {x: node.x, y: node.y, occurrences: node.data.occurrences};
-                    (coordMap[node.data.group] = coordMap[node.data.group] || []).push(coord)
+                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
+                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
                 });
 
                 // get the centroid of each group:
@@ -691,12 +699,12 @@
 
                 //Make the x-position equal to the x-position specified in the module positioning object or, if not in
                 //the hash, then set it to 250
-                var forceX = d3.forceX(d => centroids[d.data.group] ? centroids[d.data.group].x : width / 2)
+                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
                     .strength(0.3)
 
                 //Same for forceY--these act as a gravity parameter so the different strength determines how closely
                 //the individual nodes are pulled to the center of their module position
-                var forceY = d3.forceY(d => centroids[d.data.group] ? centroids[d.data.group].y : height / 2)
+                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
                     .strength(0.3)
 
                 self.simulation
@@ -743,7 +751,7 @@
                     .attr('transform', 'scale(1) translate(0,0)')
                     .attr('d', d => {
                         var node_coords = nodes
-                            .filter(d => d.data.group == n.key)
+                            .filter(d => d.group == n.key)
 
                         // to scale the shape properly around its points:
                         // move the 'g' element to the centroid point, translate
@@ -756,7 +764,7 @@
                             //If there is only one node we draw a circle around it
                             polygon = node_coords.data().map(i => { return [i.x, i.y]})      
                             centroid = polygon[0]
-                            return circle(n.values[0].data.occurrences)
+                            return circle(n.values[0].occurrences)
 
                         } else if (node_coords.nodes().length == 2){
                             //If there are two nodes we extrapolate two other points in order to create a polygon

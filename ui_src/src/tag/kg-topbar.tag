@@ -102,11 +102,17 @@
         this.date = "";
         this.isLoaded = false;
 
-        this.on("mount", function () {
+        this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
         });
-        this.on("update", function(){
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
          this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED")
          this.date = this.stores.structure.getLastUpdate();
         });
