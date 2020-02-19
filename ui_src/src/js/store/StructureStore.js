@@ -184,13 +184,14 @@
         return type;
     };
 
-    const addRelations = type => {
+    const enrichRelations = type => {
+        type.properties = type.properties.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
         const relations = type.properties.reduce((acc, property) => {
             const provenance = property.id.startsWith(AppConfig.structure.provenance);
             property.targetTypes.forEach(targetType => {
+                const target = types[targetType.id];
+                targetType.name = target?target.name:targetType.id;
                 if (!acc[targetType.id]) {
-                    const target = types[targetType.id];
-                    targetType.name = target?target.name:targetType.id;
                     acc[targetType.id] = {
                         occurrences: 0,
                         targetId: targetType.id,
@@ -200,9 +201,10 @@
                 }
                 acc[targetType.id].occurrences += targetType.occurrences;
             });
+            property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
             return acc;
         }, {});
-        type.relations = Object.values(relations);
+        type.relations = Object.values(relations).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
     }
 
     const buildStructure = data => {
@@ -215,7 +217,7 @@
 
         const typesList = Object.values(types);
 
-        typesList.forEach(type => addRelations(type));
+        typesList.forEach(type => enrichRelations(type));
         
         const nodes = typesList.reduce((acc, type) => {
             const hash = hashCode(type.id);

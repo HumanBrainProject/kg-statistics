@@ -23,11 +23,22 @@
             overflow-y: auto;
         }
 
+        .no-selection {
+            text-align: center;
+            margin: 35px 0;
+        }
+
         .title{
             font-size:1.2em;
             line-height: 1.6em;
-            margin-bottom:10px;
         }
+
+        .id{
+            font-size:0.6em;
+            line-height: 1em;
+            margin-bottom:12px;
+        }
+
 
         .version{
             font-size:1em;
@@ -180,10 +191,11 @@
             <button title="Close this view" class="close" onclick={close}><i class="fa fa-close"></i></button>
             <button title="Hide the corresponding node" class="hide" onclick={toggleHide}><i class="fa {selectedType.hidden?'fa-eye':'fa-eye-slash'}"></i></button>
         </div>
-        <div class="title" title={selectedType.id}>{selectedType.name}</div>
+        <div class="title">{selectedType.name}</div>
+        <div class="id">{selectedType.id}</div>
         <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div>
         <div class="properties">Properties:
-            <ul>
+            <ul if={selectedType.properties.length}>
                 <li each={property in selectedType.properties} title={property.name}>
                     {property.name} <span class="occurrences">{property.occurrences}</span>
                     <div if={property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:{100-property.instancesWithoutProp/selectedType.occurrences*100}%"></div>
@@ -192,30 +204,37 @@
                     <div if={!property.instancesWithoutProp} class="number-instances-wo-prop">100%</div>
                     <div if={property.targetTypes.length}>
                         <ul class="links">
-                            <li each={targetType in property.targetTypes}>
-                                <i class="fa fa-long-arrow-right"><a class={disabled:hiddenTypes.indexOf(targetType.id) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={targetType.id}>{targetType.name}</a><span class="occurrences">{targetType.occurrences}</span>
+                            <li each={targetType in property.targetTypes} title={targetType.id}>
+                                <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={targetType.id}>{targetType.name}</a><span class="occurrences">{targetType.occurrences}</span>
                             </li>
                         </ul>
                     </div>
                 </li>
             </ul>
+            <div if={!selectedType.properties.length}>
+                type {selectedType.id} does not have any property.
+            </div>
         </div>
         <div class="relations">Relations:
             <div class="norelations" if={!selectedType.relations.length}>
-                No relations found
+                type {selectedType.id} does not have any relation.
             </div>
-            <ul class="links">
-                <li each={relation in selectedType.relations}>
-                    <i class="fa fa-long-arrow-right"><a class={disabled:hiddenTypes.indexOf(relation.targetId) !== -1} href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={relation.targetId}>{relation.targetName}</a><span class="occurrences">{relation.occurrences}</span>
+            <ul class="links" if={selectedType.relations.length}>
+                <li each={relation in selectedType.relations} title={relation.targetId}>
+                    <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={relation.targetId}>{relation.targetName}</a><span class="occurrences">{relation.occurrences}</span>
                 </li>
             </ul>
         </div>
     </div>
+    <div class="no-selection" if={!selectedType}>
+        Select a type on the graph to display its properties
+    </div>
 
     <script>
+    /* 
+    class={disabled:hiddenTypes.indexOf(targetType.id) !== -1}
+    */
         this.selectedType = false;
-        this.typesWithoutRelations = [];
-        this.hiddenTypes = [];
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -229,19 +248,7 @@
         });
 
         this.on("update", () => {
-            this.nodes = this.stores.structure.getNodes();
-            this.hiddenTypes = this.stores.structure.getHiddenTypes();
-
-            this.typesWithoutRelations = [];
-            this.nodes.forEach(n => {
-                if (!n.hidden && !this.stores.structure.hasRelations(n.id, true)){
-                    this.typesWithoutRelations.push(n);
-                }
-            });
             this.selectedType = this.stores.structure.getSelectedType();
-            if(!this.selectedType){
-                return;
-            }
         });
 
         this.close = e => {
