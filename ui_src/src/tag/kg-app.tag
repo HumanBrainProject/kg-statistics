@@ -144,8 +144,10 @@
         }
 
         .loading-panel .loading-spinner img {
-            -webkit-animation: loading-spinner-rotate 0.5s infinite linear;
-            animation: loading-spinner-rotate 0.5s infinite linear;
+            width: 100%;
+            height: 100%;
+            -webkit-animation: loading-spinner-rotate 0.3s infinite linear;
+            animation: loading-spinner-rotate 0.3s infinite linear;
         }
 
         .loading-panel .loading-label {
@@ -226,8 +228,6 @@
     <div class="kg-app-container ">
         <kg-topbar></kg-topbar>
         <kg-body if={isLoaded}></kg-body>
-        <kg-types-panel if={isLoaded}></kg-types-panel>
-        <kg-spaces-panel if={isLoaded && groupViewMode}></kg-spaces-panel>
         <kg-search-panel if={isLoaded}></kg-search-panel>
         <kg-sidebar if={isLoaded}></kg-sidebar>
         <div class="loading-panel {show: isLoading}">
@@ -248,7 +248,6 @@
         this.hasError = false;
         this.isLoading = false;
         this.isLoaded = false;
-        this.groupViewMode = false;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -265,7 +264,6 @@
             this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
             this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
             this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
-            this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
         });
 
         this.retry = e => RiotPolice.trigger("structure:load");

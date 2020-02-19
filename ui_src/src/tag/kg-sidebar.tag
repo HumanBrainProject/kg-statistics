@@ -189,7 +189,6 @@
     <div if={selectedType}>
         <div class="actions">
             <button title="Close this view" class="close" onclick={close}><i class="fa fa-close"></i></button>
-            <button title="Hide the corresponding node" class="hide" onclick={toggleHide}><i class="fa {selectedType.hidden?'fa-eye':'fa-eye-slash'}"></i></button>
         </div>
         <div class="title">{selectedType.name}</div>
         <div class="id">{selectedType.id}</div>
@@ -205,7 +204,7 @@
                     <div if={property.targetTypes.length}>
                         <ul class="links">
                             <li each={targetType in property.targetTypes} title={targetType.id}>
-                                <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={targetType.id}>{targetType.name}</a><span class="occurrences">{targetType.occurrences}</span>
+                                <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlighTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a>
                             </li>
                         </ul>
                     </div>
@@ -215,25 +214,29 @@
                 type {selectedType.id} does not have any property.
             </div>
         </div>
-        <div class="relations">Relations:
-            <div class="norelations" if={!selectedType.relations.length}>
-                type {selectedType.id} does not have any relation.
+        <div class="relations">Links To:
+            <div class="norelations" if={!selectedType.linksTo.length}>
+                type {selectedType.id} is not linking to any type.
             </div>
-            <ul class="links" if={selectedType.relations.length}>
-                <li each={relation in selectedType.relations} title={relation.targetId}>
-                    <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightRelation} onmouseout={unhighlightNode} onclick={selectRelation} title={relation.targetId}>{relation.targetName}</a><span class="occurrences">{relation.occurrences}</span>
+            <ul class="links" if={selectedType.linksTo.length}>
+                <li each={linkTo in selectedType.linksTo} title={linkTo.targetId}>
+                    <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightLinkTo} onmouseout={unhighlightLinkTo} onclick={selectLinkTo} title={linkTo.targetId}>{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span>
+                </li>
+            </ul>
+        </div>
+        <div class="relations">Links From:
+            <ul class="links" if={selectedType.linksFrom.length}>
+                <li each={linkFrom in selectedType.linksFrom} title={linkFrom.sourceId}>
+                    <i class="fa fa-long-arrow-left"></i><a href="#" onmouseover={highlightLinkFrom} onmouseout={unhighlightLinkFrom} onclick={selectLinkFrom} title={linkFrom.sourceId}>{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span>
                 </li>
             </ul>
         </div>
     </div>
     <div class="no-selection" if={!selectedType}>
-        Select a type on the graph to display its properties
+        Select a type on the graph or on the search panel to display its properties
     </div>
 
     <script>
-    /* 
-    class={disabled:hiddenTypes.indexOf(targetType.id) !== -1}
-    */
         this.selectedType = false;
 
         this.on("mount", () => {
@@ -252,31 +255,38 @@
         });
 
         this.close = e => {
-            RiotPolice.trigger("structure:node_select", this.selectedType);
-        }
-        this.toggleHide = e => {
-            RiotPolice.trigger("structure:type_toggle_hide", this.selectedType);
-        }
-        this.selectNode = e => {
-            if (!this.selectedType || this.selectedType.id !==  e.item)
-                RiotPolice.trigger("structure:node_select", e.item);
-        }
-        this.highlightNode = e => {
-            RiotPolice.trigger("structure:node_highlight", e.item);
-        }
-        this.unhighlightNode = e => {
-            RiotPolice.trigger("structure:node_unhighlight");
+            RiotPolice.trigger("structure:type_select");
         }
 
-        this.selectRelation = e => {
-            RiotPolice.trigger("structure:type_select", e.item.relation.targetId);
+        this.selectTarget = e => {
+            RiotPolice.trigger("structure:type_select", e.item.targetType.targetId);
         }
-        this.highlightRelation = e => {
-            RiotPolice.trigger("structure:type_highlight", e.item.relation.targetId);
+        this.highlightTarget = e => {
+            RiotPolice.trigger("structure:type_highlight", e.item.targetType.targetId);
+        }
+        this.unhighlightTarget = e => {
+            RiotPolice.trigger("structure:type_highlight");
         }
 
-        this.unhighlightNode = e => {
-            RiotPolice.trigger("structure:type_unhighlight");
+        this.selectLinkTo = e => {
+            RiotPolice.trigger("structure:type_select", e.item.linkTo.targetId);
         }
+        this.highlightLinkTo = e => {
+            RiotPolice.trigger("structure:type_highlight", e.item.linkTo.targetId);
+        }
+        this.unhighlightLinkTo = e => {
+            RiotPolice.trigger("structure:type_highlight");
+        }
+
+        this.selectLinkFrom = e => {
+            RiotPolice.trigger("structure:type_select", e.item.linkFrom.sourceId);
+        }
+        this.highlightLinkFrom = e => {
+            RiotPolice.trigger("structure:type_highlight", e.item.linkFrom.sourceId);
+        }
+        this.unhighlightLinkFrom = e => {
+            RiotPolice.trigger("structure:type_highlight");
+        }
+    
     </script>
 </kg-sidebar>

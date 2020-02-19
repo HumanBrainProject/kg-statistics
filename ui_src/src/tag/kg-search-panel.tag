@@ -109,29 +109,30 @@
     <input type="text" class="searchbox" ref="query" onkeyup={doSearch}>
     
     <div class="results" if={results.length > 0}>
-        <div class="title">
+        <div class="title" if={!!query}>
             Results
         </div>
         <ul>
-            <li each={result in results}>
-                <a class={"disabled": hiddenTypes.indexOf(result.id) !== -1} href="#" onclick={selectResult} onmouseover={highlightType} onmouseout={unhighlightType}>{result.data.id}</a>
-                <span class="occurrences">{result.data.occurrences}</span>
+            <li each={type in results}>
+                <a href="#" onclick={selectType} onmouseover={highlightType} onmouseout={unhighlightType} title={type.id}>{type.name}</a>
+                <span class="occurrences">{type.occurrences}</span>
             </li>
         </ul>
     </div>
 
     <div class="no-results" if={!results.length && !!query}>
-        Nothing found
+        Not types found
     </div>
 
     <script>
-        this.query = "";
+        this.selectedType = null;
+        this.lastUpdate = null;
         this.results = [];
-        this.hiddenTypes = [];
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.results = this.stores.structure.getSearchResults();
         });
 
         this.on("unmount", () => {
@@ -140,9 +141,15 @@
         });
 
         this.on("update", () => {
-            this.results = _.orderBy(this.stores.structure.getSearchResults(), result => result.occurrences,'desc');
-            this.query = this.stores.structure.getSearchQuery();
-            this.hiddenTypes = this.stores.structure.getHiddenTypes();
+            this.results = this.stores.structure.getSearchResults();
+            const previousLastUpdate = this.lastUpdate;
+            this.lastUpdate = this.stores.structure.getLastUpdate();
+            const previousSelectedType = this.selectedType;
+            this.selectedType = this.stores.structure.getSelectedType();
+
+            if (this.lastUpdate !== previousLastUpdate || this.selectedType !== previousSelectedType) {
+                this.refs.query.value = this.stores.structure.getSearchQuery();
+            }
 
             if(this.stores.structure.is("SHOW_SEARCH_PANEL")){
                 if(!$(this.root).hasClass("open")){
@@ -164,16 +171,16 @@
             RiotPolice.trigger("structure:search", this.refs.query.value);
         };
 
-        this.selectResult = e => {
-            RiotPolice.trigger("structure:node_select", e.item.result);
+        this.selectType = e => {
+            RiotPolice.trigger("structure:type_select", e.item.type.id);
         };
 
         this.highlightType = e => {
-            RiotPolice.trigger("structure:node_highlight", e.item.result);
+            RiotPolice.trigger("structure:type_highlight", e.item.type.id);
         };
         
         this.unhighlightType = e => {
-            RiotPolice.trigger("structure:node_unhighlight");
+            RiotPolice.trigger("structure:type_highlight");
         };
     </script>
 </kg-search-panel>

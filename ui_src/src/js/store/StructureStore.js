@@ -16,133 +16,23 @@
 
 (function () {
     let types = {};
-    let structure = {
+    let typesList = [];
+    let typesGraphData = {
         nodes: [],
-        groupedNodes: [],
+        links: []
+    };
+    let linksGraphData = {
+        nodesMap: {},
+        nodes: [],
         links: []
     };
     let selectedType = null;
-    let groupViewModeLinks = [];
-    let groupViewModeRelations = [];
     let lastUpdate = null;
-    let groupViewMode = false;
-    let hiddenTypes = [];
-    let hiddenSpaces = [];
     let selectedNode;
     let highlightedNode;
     let searchQuery = "";
     let searchResults = [];
-    let minNodeCounts = 6;
-    let whitelist = [
-        "minds/core/structureet/v0.0.4"
-    ];
-    const hiddenSpacesLocalKey = "hiddenSpaces";
-    const hiddenNodesLocalKey = "hiddenNodes";
-
-    const getGroups = nodes => nodes.reduce((acc, node) => {
-        const group = acc[node.group] || {};
-        const nodes = group.value || [];
-        nodes.push(node);
-        let storedHiddenSpaces = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
-        acc[node.group] = {
-            value: nodes,
-            hidden: storedHiddenSpaces.includes(node.group)
-        };
-        return acc;
-    }, {});
-
-    const generateViewData = function (on) {
-        groupViewMode = !!on;
-        if (groupViewMode) {
-            generateGroupViewData();
-        } else {
-            generateDefaultViewData();
-        }
-    };
-
-    const generateGroupViewData = () => {
-
-        const nodes = structure.groupedNodes;
-
-        const groups = getGroups(nodes);
-
-        let toBeHidden;
-        //First use
-        if (!localStorage.getItem(hiddenNodesLocalKey)) {
-            toBeHidden = [];
-            //Hidding nodes with too many connections
-            nodes.forEach(node => {
-                node.hidden = false;
-                if (node.relations.length &&
-                    whitelist.indexOf(node.id) < 0 &&
-                    groups[node.group].value.length > minNodeCounts &&
-                    node.relations.length / groups[node.group].value.length > AppConfig.structure.autoHideThreshold
-                ) {
-                    toBeHidden.push(node.id);
-                }
-            });
-            localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
-        } else {
-            toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
-        }
-
-        nodes.forEach(node => {
-            node.hidden = false;
-            if (node.relations.length &&
-                whitelist.indexOf(node.id) < 0 &&
-                groups[node.group].hidden ||
-                toBeHidden.includes(node.id)
-            ) {
-                node.hidden = true;
-            }
-        });
-
-        for (item in groups) {
-            if (groups[item].hidden) {
-                hiddenSpaces.push(item);
-            }
-        }
-
-        hiddenTypes = _(nodes).filter(node => node.hidden).map(node => node.id).value();
-    };
-
-    const generateDefaultViewData = () => {
-
-        const nodes = structure.nodes;
-
-        let toBeHidden;
-        //First use
-        if (!localStorage.getItem(hiddenNodesLocalKey)) {
-            toBeHidden = [];
-            //Hidding nodes with too many connections
-            nodes.forEach(node => {
-                node.hidden = false;
-                if (node.relations.length &&
-                    whitelist.indexOf(node.id) < 0 &&
-                    node.relations.length / structure.nodes.length > AppConfig.structure.autoHideThreshold
-                ) {
-                    toBeHidden.push(node.id);
-                }
-            });
-            localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(toBeHidden));
-        } else {
-            toBeHidden = JSON.parse(localStorage.getItem(hiddenNodesLocalKey));
-        }
-
-        nodes.forEach(node => {
-            node.hidden = false;
-            if (node.relations.length &&
-                whitelist.indexOf(node.type.id) < 0 &&
-                toBeHidden.includes(node.type.id)
-            ) {
-                node.hidden = true;
-            }
-        });
-
-        hiddenTypes = _(nodes).filter(node => node.hidden).map(node => node.type.id).value();
-    };
-
-
+    
     const hashCode = text => {
         let hash = 0;
         if (typeof text !== "string" || text.length === 0) {
@@ -184,41 +74,100 @@
         return type;
     };
 
-    const enrichRelations = type => {
-        type.properties = type.properties.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
-        const relations = type.properties.reduce((acc, property) => {
-            const provenance = property.id.startsWith(AppConfig.structure.provenance);
-            property.targetTypes.forEach(targetType => {
-                const target = types[targetType.id];
-                targetType.name = target?target.name:targetType.id;
-                if (!acc[targetType.id]) {
-                    acc[targetType.id] = {
-                        occurrences: 0,
-                        targetId: targetType.id,
-                        targetName: targetType.name,
-                        provenance: provenance
-                    }
-                }
-                acc[targetType.id].occurrences += targetType.occurrences;
-            });
-            property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
-            return acc;
-        }, {});
-        type.relations = Object.values(relations).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
-    }
+    const buildTypes = data => {
 
-    const buildStructure = data => {
+        const enrichTypeLinksTo = type => {
+            type.properties = type.properties.filter(property => property.name !== "extends" && property.name !== "wasDerivedFrom").sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+            const linksTo = type.properties.reduce((acc, property) => {
+                const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                property.targetTypes.forEach(targetType => {
+                    const target = types[targetType.id];
+                    targetType.name = target?target.name:targetType.id;
+                    if (!acc[targetType.id]) {
+                        acc[targetType.id] = {
+                            occurrences: 0,
+                            targetId: targetType.id,
+                            targetName: targetType.name,
+                            provenance: provenance
+                        }
+                    }
+                    acc[targetType.id].occurrences += targetType.occurrences;
+                });
+                property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+                return acc;
+            }, {});
+            type.linksTo = Object.values(linksTo).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
+        }
+    
+        const enrichTypesLinks = () => {
+    
+            const linksFrom = {};
+            typesList.forEach(type => {
+                enrichTypeLinksTo(type);
+                type.linksTo.forEach(linkTo => {
+                    if (!linksFrom[linkTo.targetId]) {
+                        linksFrom[linkTo.targetId] = {};
+                    }
+                    if (!linksFrom[linkTo.targetId][type.id]) {
+                        linksFrom[linkTo.targetId][type.id] = {
+                            occurrences: 0,
+                            sourceId: type.id,
+                            sourceName: type.name
+                        }
+    
+                    }
+                    linksFrom[linkTo.targetId][type.id].occurrences += linkTo.occurrences;
+                });
+            });
+            Object.entries(linksFrom).forEach(([target, sources]) => {
+                const type = types[target];
+                if (type) {
+                    type.linksFrom = Object.values(sources).sort((a, b) => (a.sourceName > b.sourceName)?1:((a.sourceName < b.sourceName)?-1:0));
+                }
+            });
+        };
     
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
-            acc[type.id] = type;
+            if (type.name !== "string") {
+             acc[type.id] = type;
+            }
             return acc;
         }, {});
 
-        const typesList = Object.values(types);
+        typesList = Object.values(types);
 
-        typesList.forEach(type => enrichRelations(type));
+        enrichTypesLinks();
+    };
+
+    const getLinkedTypes = type => type.linksTo.reduce((acc, linkTo) => {
+        if (types[linkTo.targetId]) {
+            acc.push(types[linkTo.targetId]);
+        }
+        return acc;
+    }, []);
+
+    const removeDupplicateTypes = list => {
+        const uniqueTypes = {};
+        list.forEach(type => {
+            if (!uniqueTypes[type.id]) {
+                uniqueTypes[type.id] = type;
+            }
+        });
+        return Object.values(uniqueTypes);
+    };
+
+    const buildLinksGraphData = () => {
+        const directLinkedTypes = getLinkedTypes(selectedType);
+        const nextLinkedTypes = directLinkedTypes.reduce((acc, type) => {
+            acc.push(...getLinkedTypes(type));
+            return acc;
+        }, []);
         
+        //TODO: get from links
+
+        const typesList = removeDupplicateTypes([selectedType, ...directLinkedTypes, ...nextLinkedTypes]);
+
         const nodes = typesList.reduce((acc, type) => {
             const hash = hashCode(type.id);
             acc[type.id] = {
@@ -227,38 +176,54 @@
                 name: type.name,
                 occurrences: type.occurrences,
                 type: type,
-                relations: []
+                linksTo: []
             };
             return acc
         }, {});
 
         typesList.forEach(type => {
             const node = nodes[type.id];
-            node.relations = type.relations.map(relation => nodes[relation.targetId]);
+            node.linksTo = type.linksTo.reduce((acc, relation) => {
+                if (nodes[relation.targetId]) {
+                    acc.push(nodes[relation.targetId]);
+                }
+                return acc;
+            }, []);
         });
-        
+
         const links = typesList.reduce((acc, type) => {
             const sourceNode = nodes[type.id];
-            type.relations
+            type.linksTo
                 .forEach(relation => {
                     if (relation.target !== type.id) {
                         const targetNode = nodes[relation.targetId];
-                        const key = type.id + "-" + relation.targetId;
-                        if (!acc[key]) {
-                            acc[key] = {
-                                occurrences: 0,
-                                source: sourceNode,
-                                target: targetNode,
-                                provenance: relation.provenance
+                        if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
+                            const key = type.id + "-" + relation.targetId;
+                            if (!acc[key]) {
+                                acc[key] = {
+                                    occurrences: 0,
+                                    source: sourceNode,
+                                    target: targetNode,
+                                    provenance: relation.provenance
+                                }
                             }
+                            acc[key].occurrences += relation.occurrences;
                         }
-                        acc[key].occurrences += relation.occurrences;
                     }
                 });
             return acc;
         }, {});
 
-        const groupedNodes = typesList.reduce((acc, type) => {
+        linksGraphData = {
+            nodesMap: nodes,
+            nodes: Object.values(nodes),
+            links: Object.values(links)
+        };
+    }
+
+    const buildTypesGraphData = () => {
+
+        const nodes = typesList.reduce((acc, type) => {
             type.spaces.forEach(space => {
                 acc.push({
                     hash: hashCode(space.name + "/" + type.id),
@@ -267,60 +232,26 @@
                     occurrences: space.occurrences,
                     group: space.name,
                     type: type,
-                    relations: []
+                    linksTo: []
                 });
             });
             return acc;
         }, []);
 
-        structure = {
-            nodes: Object.values(nodes),
-            groupedNodes: groupedNodes,
-            links: Object.values(links)
+        typesGraphData = {
+            nodes: nodes,
+            links: []
         };
     };
 
-    const loadStructure = () => {
-        if (!structureStore.is("STRUCTURE_LOADING")) {
-            structureStore.toggleState("STRUCTURE_LOADING", true);
-            structureStore.toggleState("STRUCTURE_ERROR", false);
-            structureStore.notifyChange();
-            fetch(`/api/types?stage=LIVE&withProperties=true`)
-                .then(response => response.json())
-                .then(data => {
-                    buildStructure(data);
-                    generateViewData(groupViewMode);
-                    lastUpdate = new Date();
-                    structureStore.toggleState("STRUCTURE_LOADED", true);
-                    structureStore.toggleState("STRUCTURE_LOADING", false);
-                    structureStore.notifyChange();
-                })
-                .catch(e => {
-                    structureStore.toggleState("STRUCTURE_ERROR", true);
-                    structureStore.toggleState("STRUCTURE_LOADED", false);
-                    structureStore.toggleState("STRUCTURE_LOADING", false);
-                    structureStore.notifyChange();
-                });
+    const search = query => {
+        if (query) {
+            searchQuery = query;
+            searchResults = typesList.filter(type => type.name.match(new RegExp(query, "gi"))).sort((a, b) => b.occurrences - a.occurrences);
+        } else {
+            searchQuery = "";
+            searchResults = typesList.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
         }
-    };
-
-    const getTypes = () => Object.values(types);
-
-    const getStructure = () => groupViewMode ? {nodes: structure.groupedNodes, links: []} : {nodes: structure.nodes, links: structure.links};
-
-    const getNodes = () => groupViewMode ? structure.groupedNodes : structure.nodes;
-
-    const getLinks = () => groupViewMode ? groupViewModeLinks : structure.links;
-
-    const getRelations2 = () => ({});
-
-    const getRelations2Of = id => {
-        const relations = getRelations2();
-        const rel = getRelations2()[id];
-        if (!rel) {
-            return [];
-        }
-        return rel;
     };
 
     const init = () => {
@@ -334,8 +265,8 @@
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
-            "SELECTED_NODE", "NODE_HIGHLIGHTED",
-            "GROUP_VIEW_MODE", "SHOW_SEARCH_PANEL", "SHOW_TYPES_PANEL", "SHOW_SPACES_PANEL"
+            "NODE_SELECTED", "NODE_HIGHLIGHTED",
+            "SHOW_SEARCH_PANEL"
         ],
         init, reset);
 
@@ -343,142 +274,104 @@
      * Store trigerrable actions
      */
 
-    structureStore.addAction("structure:load", loadStructure);
-
-
-    structureStore.addAction("structure:toggle_group_view_mode", () => {
-        generateViewData(!groupViewMode);
-        structureStore.toggleState("GROUP_VIEW_MODE", groupViewMode);
-        structureStore.notifyChange();
+    structureStore.addAction("structure:load", () => {
+        if (!structureStore.is("STRUCTURE_LOADING")) {
+            structureStore.toggleState("STRUCTURE_LOADING", true);
+            structureStore.toggleState("STRUCTURE_ERROR", false);
+            structureStore.notifyChange();
+            fetch(`/api/types?stage=LIVE&withProperties=true`)
+                .then(response => response.json())
+                .then(data => {
+                    lastUpdate = new Date();
+                    selectedType = null;
+                    buildTypes(data);
+                    search();
+                    buildTypesGraphData();
+                    structureStore.toggleState("STRUCTURE_LOADED", true);
+                    structureStore.toggleState("STRUCTURE_LOADING", false);
+                    structureStore.notifyChange();
+                })
+                .catch(e => {
+                    structureStore.toggleState("STRUCTURE_ERROR", true);
+                    structureStore.toggleState("STRUCTURE_LOADED", false);
+                    structureStore.toggleState("STRUCTURE_LOADING", false);
+                    structureStore.notifyChange();
+                });
+        }
     });
 
     structureStore.addAction("structure:node_select", node => {
-        if (node !== selectedNode || node === undefined) {
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+        if (node) {
+            if (node !== selectedNode) {
+                search();
+                highlightedNode = undefined;
+                selectedType = node.type;
+                selectedNode = node;
+                buildLinksGraphData();
+                structureStore.toggleState("NODE_HIGHLIGHTED", false);
+                structureStore.toggleState("NODE_SELECTED", !!node);
+                structureStore.toggleState("SHOW_SEARCH_PANEL", false);
+            }
+        } else if (selectedNode) {
+            search();
             highlightedNode = undefined;
-            structureStore.toggleState("SELECTED_NODE", !!node);
-            structureStore.toggleState("SHOW_SEARCH_PANEL", false);
-            selectedType = node.type;
-            selectedNode = node;
-        } else {
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            highlightedNode = undefined;
-            structureStore.toggleState("SELECTED_NODE", false);
             selectedNode = undefined;
             selectedType = undefined;
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            structureStore.toggleState("NODE_SELECTED", false);
         }
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:node_highlight", node => {
-        structureStore.toggleState("NODE_HIGHLIGHTED", !!node);
         highlightedNode = node;
+        structureStore.toggleState("NODE_HIGHLIGHTED", !!node);
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:node_unhighlight", () => {
-        structureStore.toggleState("NODE_HIGHLIGHTED", false);
-        highlightedNode = undefined;
+    structureStore.addAction("structure:type_select", id => {
+        const type = types[id];
+        if (type) {
+            if (type !== selectedType) {
+                search();
+                highlightedNode = undefined;
+                selectedType = type;
+                buildLinksGraphData();
+                selectedNode = linksGraphData.nodesMap[id];
+                structureStore.toggleState("NODE_HIGHLIGHTED", false);
+                structureStore.toggleState("NODE_SELECTED", !!type);
+                structureStore.toggleState("SHOW_SEARCH_PANEL", false);
+            }
+        } else if (selectedType) {
+            search();
+            highlightedNode = undefined;
+            selectedNode = undefined;
+            selectedType = undefined;
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            structureStore.toggleState("NODE_HIGHLIGHTED", false);
+            structureStore.toggleState("NODE_SELECTED", false);
+        }
+        structureStore.notifyChange();
+    });
+
+    structureStore.addAction("structure:type_highlight", id => {
+        if (selectedType) {
+            highlightedNode = linksGraphData.nodesMap[id];
+        } else {
+            highlightedNode = undefined; //TODO: find a node
+        }
+        structureStore.toggleState("NODE_HIGHLIGHTED", !!highlightedNode);
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:search", query => {
-        if (query) {
-            searchQuery = query;
-            searchResults = _.filter(structure.nodes, node => node.type.id.match(new RegExp(query, "gi")));
-        } else {
-            searchQuery = query;
-            searchResults = [];
-        }
+        search(query);
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:search_panel_toggle", () => {
         structureStore.toggleState("SHOW_SEARCH_PANEL");
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:types_panel_toggle", () => {
-        structureStore.toggleState("SHOW_TYPES_PANEL");
-        structureStore.notifyChange();
-    });
-    structureStore.addAction("structure:spaces_panel_toggle", () => {
-        structureStore.toggleState("SHOW_SPACES_PANEL");
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:type_toggle_hide", type => {
-        if (typeof type === "string") {
-            type = _.find(structure.nodes, node => node.id === type);
-        }
-        if (type !== undefined && type === selectedNode) {
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            highlightedNode = undefined;
-            structureStore.toggleState("SELECTED_NODE", false);
-            selectedNode = undefined;
-        }
-        type.hidden = !type.hidden;
-        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
-        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:space_toggle_hide", space => {
-        let spaceNodes = [];
-        spaceNodes = _.filter(structure.nodes, node => node.group === space)
-        let group = getGroups(structure.nodes);
-        let hiddenArray = JSON.parse(localStorage.getItem(hiddenSpacesLocalKey)) || [];
-        let previousHiddenState = group[space] && group[space].hidden;
-        if (previousHiddenState) {
-            hiddenArray = hiddenArray.slice(1, hiddenArray.indexOf(space));
-        } else {
-            hiddenArray.push(space);
-        }
-        spaceNodes.map((node) => {
-            node.hidden = !previousHiddenState;
-            return node;
-        });
-        localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenArray));
-        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
-        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
-        hiddenSpaces = hiddenArray;
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:all_types_toggle_hide", hide => {
-        structureStore.toggleState("NODE_HIGHLIGHTED", false);
-        highlightedNode = undefined;
-        structureStore.toggleState("SELECTED_NODE", false);
-        selectedNode = undefined;
-        structure.nodes.forEach(node => { node.hidden = !!hide });
-        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
-        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
-        if (!hide) {
-            hiddenSpaces = [];
-        } else {
-            hiddenSpaces = Object.keys(getGroups(structure.nodes));
-        }
-        localStorage.setItem(hiddenSpacesLocalKey, JSON.stringify(hiddenSpaces));
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:all_spaces_show", () => {
-        let group = getGroups(structure.nodes);
-        let spacesToShow = [];
-        for (let space in group) {
-            if (group[space].hidden) {
-                spacesToShow.push(space);
-            }
-        }
-        structure.nodes.forEach(node => {
-            if (spacesToShow.includes(node.group)) {
-                node.hidden = false;
-            }
-        });
-        hiddenSpaces = [];
-        hiddenTypes = _(structure.nodes).filter(node => node.hidden).map(node => node.id).value();
-        localStorage.removeItem(hiddenSpacesLocalKey);
-        localStorage.setItem(hiddenNodesLocalKey, JSON.stringify(hiddenTypes));
         structureStore.notifyChange();
     });
 
@@ -490,36 +383,19 @@
     
     structureStore.addInterface("getSelectedType", () => selectedType);
 
-    structureStore.addInterface("getSelectedNode", () => selectedNode);
+    structureStore.addInterface("getTypes", types);
 
-    structureStore.addInterface("getHighlightedNode", () => highlightedNode);
-
-    structureStore.addInterface("getTypes", getTypes);
-
-    structureStore.addInterface("getStructure", getStructure);
-
-    structureStore.addInterface("getNodes", getNodes);
-
-    structureStore.addInterface("getLinks", getLinks);
-
-    structureStore.addInterface("getHiddenTypes", () => hiddenTypes);
-
-    structureStore.addInterface("getHiddenSpaces", () => hiddenSpaces);
-
-    structureStore.addInterface("getRelations2Of", getRelations2Of);
-
-    structureStore.addInterface("hasRelations", (id, filterHidden) => {
-        if (filterHidden) {
-            const relations = _(getRelations2Of(id)).filter(rel => hiddenTypes.indexOf(rel.relatedType) === -1).value();
-            return !!relations.length;
-        } else {
-            return getRelations2Of(id).length;
-        }
-    });
+    structureStore.addInterface("getTypesList", typesList);
 
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 
     structureStore.addInterface("getSearchResults", () => searchResults);
+
+    structureStore.addInterface("getSelectedNode", () => selectedNode);
+
+    structureStore.addInterface("getHighlightedNode", () => highlightedNode);
+
+    structureStore.addInterface("getGraphData", () => selectedType?linksGraphData:typesGraphData);
 
     RiotPolice.registerStore(structureStore);
 })();

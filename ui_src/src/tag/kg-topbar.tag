@@ -89,7 +89,6 @@
             <img src="img/ebrains.svg" alt="" width="40" height="40" />
             <div class="title">{AppConfig.title}</div>
         </div>
-        <kg-view-mode if={isLoaded}></kg-view-mode>    
         <div class="header-right" if={isLoaded} >
             <div class="date" if={date}>KG State at : {date}</div>
             <button class="refresh" onClick={refresh}>

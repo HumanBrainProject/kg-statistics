@@ -182,14 +182,14 @@
             width:100%;
             height:100%;
         }
-        .hull_name{
+        .info{
             position: absolute;
             top: 20px;
             left: 20px;
             color: white;
         }
     </style>
-    <div class="hull_name">{hullName}</div>
+    <div class="info">{info}</div>
     <svg class="nodegraph" ref="svg"></svg>
     
     <div class="actions">
@@ -215,18 +215,16 @@
 
     <script>
         let self = this;
-        this.toto = "Wirkd";
 
         const maxLinkSize = 40;
         const maxNodeSize = 60;
 
-        this.groupViewMode = false;
+        this.selectedType = null;
         this.lastUpdate = null;
         this.simulation;
         this.nodes = [];
         this.links = [];
-        this.hullName = "";
-        this.hiddenTypes = [];
+        this.info = "";
         this.color = d3.scaleOrdinal(d3.schemeCategory20);
 
         var polygon;
@@ -260,16 +258,13 @@
                 return;
             }
             var self = this;
-            const previousGroupViewMode = this.groupViewMode;
-            this.groupViewMode = this.stores.structure.is("GROUP_VIEW_MODE");
             const previousLastUpdate = this.lastUpdate;
             this.lastUpdate = this.stores.structure.getLastUpdate();
-            var structure = this.stores.structure.getStructure();
-            var nodes = structure.nodes;
-            var links = structure.links;
-
-            let previousHiddenTypesCount = this.hiddenTypes.length;
-            this.hiddenTypes = this.stores.structure.getHiddenTypes();
+            const previousSelectedType = this.selectedType;
+            this.selectedType = this.stores.structure.getSelectedType();
+            var data = this.stores.structure.getGraphData();
+            var nodes = data.nodes;
+            var links = data.links;
 
             //Calculating the max numberof instance and link values
             //to prepare a scale for the node radius and link width
@@ -282,14 +277,10 @@
                 .domain([1,d3.max(linkValues)])
                 .range([3,maxLinkSize])
 
-            if (!this.svg || previousHiddenTypesCount !== this.hiddenTypes.length || this.groupViewMode !== previousGroupViewMode || this.lastUpdate !== previousLastUpdate) {
+            if (!this.svg || this.lastUpdate !== previousLastUpdate || this.selectedType !== previousSelectedType) {
                 this.nodes = nodes;
                 this.links = links;
-                /*
-                this.nodes = _.filter(nodes, node => !node.hidden);
-                this.links = _.filter(_.cloneDeep(links), link => this.hiddenTypes.indexOf(link.source.id) ===
-                    -1 && this.hiddenTypes.indexOf(link.target.id) === -1);
-                */
+
                 $(this.refs.svg).empty().css({
                     opacity: 0
                 });
@@ -299,8 +290,8 @@
                 });
             }
 
-            const newSelectedNode = this.stores.structure.is("SELECTED_NODE") && this.stores.structure.getSelectedNode();
-            if (newSelectedNode && this.hiddenTypes.indexOf(newSelectedNode.id) === -1) {
+            const newSelectedNode = this.stores.structure.getSelectedNode();
+            if (newSelectedNode) {
                 let recenter = newSelectedNode !== this.selectedNode;
                 this.selectedNode = newSelectedNode;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
@@ -325,7 +316,7 @@
             }
 
             const newHighlightedNode = this.stores.structure.is("NODE_HIGHLIGHTED") && this.stores.structure.getHighlightedNode();
-            if (newHighlightedNode && this.hiddenTypes.indexOf(newHighlightedNode.id) === -1) {
+            if (newHighlightedNode) {
                 this.highlightedNode = newHighlightedNode;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
@@ -351,7 +342,7 @@
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
             let height = this.svg.node().getBoundingClientRect().height;
-            const zoom = this.groupViewMode?this.groupInitialZoom:this.initialZoom;
+            const zoom = this.selectedType?this.initialZoom:this.groupInitialZoom;
             let zoomScaleTo = zoom;
             this.svg.transition().duration(500)
                 .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 * zoom, height / 2 *
@@ -435,9 +426,9 @@
                 .attr("class", "nodes")
 
             var groupIds = [];
-            if (this.groupViewMode) {
+            if (!this.selectedType) {
                 // Grouping nodes by organization
-                groupIds = d3.nest().key((n) => n.group ).entries(this.nodes);
+                groupIds = d3.nest().key(n => n.group ).entries(this.nodes);
             }
 
             self.simulation = d3.forceSimulation(nodes)
@@ -457,7 +448,7 @@
 
 
             // SVG path for hulls
-            if (this.groupViewMode) {
+            if (!this.selectedType) {
                 paths = hull.selectAll('.hull')
                     .data(groupIds, d => d )
                     .enter()
@@ -482,11 +473,11 @@
                         .on('drag', group_dragged)
                         .on('end', groupDragEnded)
                     ).on("mouseover", d => {
-                        self.hullName = d.key
+                        self.info = d.key
                         self.update()
                     })
                     .on("mouseout", d => {
-                        self.hullName = ""
+                        self.info = ""
                         self.update()
                     });
             }
@@ -504,7 +495,7 @@
             this.svg.call(this.zoom);
 
             //Initial scale
-            var previousZoom = this.groupViewMode?this.groupInitialZoom:this.initialZoom;
+            var previousZoom = this.selectedType?this.initialZoom:this.groupInitialZoom;
             this.svg.call(this.zoom.scaleTo, previousZoom);
             hull.call(this.zoom.scaleTo, previousZoom);
             
@@ -527,15 +518,19 @@
                 })
                 .attr("stroke-width", d => linkRscale(d.occurrences))
                 .on("mouseover", d => {
-                    if (d.target.group == d.source.group){
-                        self.hullName = d.source.group
+                    if (!self.selectedType) {
+                        if (d.target.group == d.source.group){
+                            self.info = d.source.group
+                        } else {
+                            self.info = "from " + d.source.group + " to " + d.target.group
+                        }
                     } else {
-                        self.hullName = "from " + d.source.group + " to " + d.target.group
+                        self.info = "from " + d.source.name + " to " + d.target.name
                     }
                     self.update()
                 })
                 .on("mouseout", d => {
-                    self.hullName = ""
+                    self.info = ""
                     self.update()
                 })
 
@@ -565,16 +560,20 @@
 
                     })
                     .on("mouseover", d => {
-                        if (d.target.group == d.source.group){
-                            self.hullName = d.source.group
+                        if (!self.selectedType) {
+                            if (d.target.group == d.source.group){
+                                self.info = d.source.group;
+                            } else {
+                                self.info = d.source.group + " <-> " + d.target.group;
+                            }
                         } else {
-                            self.hullName = d.source.group + " <-> " + d.target.group
+                            self.info = "from " + d.source.name + " to " + d.target.name
                         }
                         self.update()
                     })
                     .on("mouseout", d => {
-                        self.hullName = ""
-                        self.update()
+                        self.info = "";
+                        self.update();
                     })
 
 
@@ -604,9 +603,9 @@
                         d3.select(this).classed("is-type_" + d.typeHash, true);
                         d3.select(this).classed("related-to_" + d.hash, true);
                         d3.select(this).classed("related-to-type_" + d.typeHash, true);
-                        d.relations.forEach(relation => {
-                            d3.select(this).classed("related-to_" + relation.hash, true);
-                            d3.select(this).classed("related-to-type_" + relation.typeHash, true);
+                        d.linksTo.forEach(linkTo => {
+                            d3.select(this).classed("related-to_" + linkTo.hash, true);
+                            d3.select(this).classed("related-to-type_" + linkTo.typeHash, true);
                         });
 
                     })
@@ -618,13 +617,17 @@
                         self.view
                             .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
                             .classed("dephased", true);
-                        self.hullName = d.group
-                        self.update()
+                        if (!self.selectedType) {
+                            self.info = d.group;
+                        } else {
+                            self.info = d.name;
+                        }
+                        self.update();
                     })
                     .on("mouseout", d => {
                         self.view.selectAll(".dephased").classed("dephased", false);
-                        self.hullName = ""
-                        self.update()
+                        self.info = "";
+                        self.update();
                     })
                     .on("click", d => {
                         RiotPolice.trigger("structure:node_select", d);
@@ -711,7 +714,7 @@
                     .force("x", forceX)
                     .force("y", forceY)
 
-                if (self.groupViewMode) {
+                if (!self.selectedType) {
                     updateGroups();
                 }
             }
