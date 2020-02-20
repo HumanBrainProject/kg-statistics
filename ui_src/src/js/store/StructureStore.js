@@ -18,6 +18,7 @@
     let types = {};
     let typesList = [];
     let typesGraphData = {
+        nodesMap: {},
         nodes: [],
         links: []
     };
@@ -33,6 +34,10 @@
     let searchQuery = "";
     let searchResults = [];
     
+    const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string"];
+    const excludedProperties = [];
+    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation"];
+
     const hashCode = text => {
         let hash = 0;
         if (typeof text !== "string" || text.length === 0) {
@@ -77,21 +82,43 @@
     const buildTypes = data => {
 
         const enrichTypeLinksTo = type => {
-            type.properties = type.properties.filter(property => property.name !== "extends" && property.name !== "wasDerivedFrom").sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+            if (excludedProperties.length) {
+                type.properties = type.properties.filter(property => !excludedProperties.includes(property.name));
+            }
+            type.properties = type.properties.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
             const linksTo = type.properties.reduce((acc, property) => {
                 const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                if (excludedPropertiesForLinks.includes(property.name)) {
+                    property.excludeLinks = true;
+                }
                 property.targetTypes.forEach(targetType => {
                     const target = types[targetType.id];
-                    targetType.name = target?target.name:targetType.id;
-                    if (!acc[targetType.id]) {
-                        acc[targetType.id] = {
-                            occurrences: 0,
-                            targetId: targetType.id,
-                            targetName: targetType.name,
-                            provenance: provenance
-                        }
+                    if (target) {
+                        targetType.name = target.name;
+                    } else {
+                        targetType.name = targetType.id;
+                        targetType.isUnknown = true;
                     }
-                    acc[targetType.id].occurrences += targetType.occurrences;
+                    if (excludedTypes.includes(targetType.id)) {
+                        targetType.isExcluded = true;
+                    }
+                    if (!property.excludeLinks) {
+                        if (!acc[targetType.id]) {
+                            acc[targetType.id] = {
+                                occurrences: 0,
+                                targetId: targetType.id,
+                                targetName: targetType.name,
+                                provenance: provenance
+                            }
+                            if (targetType.isExcluded) {
+                                acc[targetType.id].isExcluded = true;
+                            }
+                            if (targetType.isUnknown) {
+                                acc[targetType.id].isUnknown = true;
+                            }
+                        }
+                        acc[targetType.id].occurrences += targetType.occurrences;
+                    }
                 });
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
                 return acc;
@@ -104,6 +131,7 @@
             const linksFrom = {};
             typesList.forEach(type => {
                 enrichTypeLinksTo(type);
+                type.linksFrom = [];
                 type.linksTo.forEach(linkTo => {
                     if (!linksFrom[linkTo.targetId]) {
                         linksFrom[linkTo.targetId] = {};
@@ -113,8 +141,10 @@
                             occurrences: 0,
                             sourceId: type.id,
                             sourceName: type.name
+                        };
+                        if (type.isExcluded) {
+                            linksFrom[linkTo.targetId][type.id].isExcluded = true;
                         }
-    
                     }
                     linksFrom[linkTo.targetId][type.id].occurrences += linkTo.occurrences;
                 });
@@ -129,9 +159,10 @@
     
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
-            if (type.name !== "string") {
-             acc[type.id] = type;
+            if (excludedTypes.includes(type.id)) {
+                type.isExcluded = true;
             }
+            acc[type.id] = type;
             return acc;
         }, {});
 
@@ -140,9 +171,16 @@
         enrichTypesLinks();
     };
 
-    const getLinkedTypes = type => type.linksTo.reduce((acc, linkTo) => {
+    const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         if (types[linkTo.targetId]) {
             acc.push(types[linkTo.targetId]);
+        }
+        return acc;
+    }, []);
+
+    const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
+        if (types[linkFrom.sourceId]) {
+            acc.push(types[linkFrom.sourceId]);
         }
         return acc;
     }, []);
@@ -158,15 +196,15 @@
     };
 
     const buildLinksGraphData = () => {
-        const directLinkedTypes = getLinkedTypes(selectedType);
-        const nextLinkedTypes = directLinkedTypes.reduce((acc, type) => {
-            acc.push(...getLinkedTypes(type));
+        const directLinkedToTypes = getLinkedToTypes(selectedType);
+        const directLinkedFromTypes = getLinkedFromTypes(selectedType);
+
+        const nextLinkedToTypes = directLinkedToTypes.reduce((acc, type) => {
+            acc.push(...getLinkedToTypes(type));
             return acc;
         }, []);
         
-        //TODO: get from links
-
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedTypes, ...nextLinkedTypes]);
+        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes, ...nextLinkedToTypes]);
 
         const nodes = typesList.reduce((acc, type) => {
             const hash = hashCode(type.id);
@@ -176,7 +214,8 @@
                 name: type.name,
                 occurrences: type.occurrences,
                 type: type,
-                linksTo: []
+                linksTo: [],
+                linksFrom: []
             };
             return acc
         }, {});
@@ -223,7 +262,18 @@
 
     const buildTypesGraphData = () => {
 
+        const nodesMap = {};
         const nodes = typesList.reduce((acc, type) => {
+            const hash = hashCode(type.id);
+            nodesMap[type.id] = {
+                hash: hash,
+                typeHash: hash,
+                name: type.name,
+                occurrences: type.occurrences,
+                type: type,
+                linksTo: [],
+                linksFrom: []
+            };
             type.spaces.forEach(space => {
                 acc.push({
                     hash: hashCode(space.name + "/" + type.id),
@@ -232,13 +282,15 @@
                     occurrences: space.occurrences,
                     group: space.name,
                     type: type,
-                    linksTo: []
+                    linksTo: [],
+                    linksFrom: []
                 });
             });
             return acc;
         }, []);
 
         typesGraphData = {
+            nodesMap: nodesMap,
             nodes: nodes,
             links: []
         };
@@ -247,10 +299,10 @@
     const search = query => {
         if (query) {
             searchQuery = query;
-            searchResults = typesList.filter(type => type.name.match(new RegExp(query, "gi"))).sort((a, b) => b.occurrences - a.occurrences);
+            searchResults = typesList.filter(type => !excludedTypes.includes(type.id) && type.name.match(new RegExp(query, "gi"))).sort((a, b) => b.occurrences - a.occurrences);
         } else {
             searchQuery = "";
-            searchResults = typesList.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+            searchResults = typesList.filter(type => !excludedTypes.includes(type.id)).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
         }
     };
 
@@ -279,7 +331,7 @@
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/types?stage=LIVE&withProperties=true`)
+            fetch("/api/types?stage=LIVE&withProperties=true")
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
@@ -359,7 +411,7 @@
         if (selectedType) {
             highlightedNode = linksGraphData.nodesMap[id];
         } else {
-            highlightedNode = undefined; //TODO: find a node
+            highlightedNode = typesGraphData.nodesMap[id];
         }
         structureStore.toggleState("NODE_HIGHLIGHTED", !!highlightedNode);
         structureStore.notifyChange();

@@ -39,10 +39,26 @@
             margin-bottom:12px;
         }
 
+        .spaces {
+            margin-bottom:6px;
+        }
 
-        .version{
-            font-size:1em;
-            line-height: 1.4em;
+        .warning {
+            color: red;
+        }
+        
+        .spaces ul {
+            list-style-type: none;
+            margin: 6px 0 12px 0;
+            padding-left: 5px;
+        }
+
+        .spaces ul li {
+            margin-right: 3px;
+        }
+
+        .spaces ul li i.fa:before {
+            margin-right: 5px;
         }
 
         .instances{
@@ -75,14 +91,25 @@
             text-decoration: none;
         }
 
+        .link-disabled {
+            text-decoration: line-through;
+            color: #9a9a9a;
+        }
+
         .norelations{
-            margin-top:12px;
+            margin:12px 12px 16px 12px;
             font-size:0.8em;
         }
 
         ul{
             font-size:0.8em;
             padding-left:18px;
+        }
+
+        li{
+            padding: 3px 0;
+            line-height:1;
+            position:relative;
         }
 
         ul ul {
@@ -94,17 +121,22 @@
             padding-left: 5px;
         }
 
-        li{
-            padding: 3px 0;
-            line-height:1;
-            position:relative;
-        }
         ul.links > li {
             margin-right: 3px;
         }
-        ul.links > li > i.fa:before {
+
+        ul.links > li .broken-link {
+            color: red;
+        }
+
+        ul.links > li .broken-link .link-disabled {
+            color: red;
+        }
+
+        ul.links > li > span > i.fa:before {
             margin-right: 5px;
         }
+
         .occurrences {
             background-color: #444;
             display: inline-block;   
@@ -157,32 +189,10 @@
             border-bottom-right-radius: 5px;
             border-bottom:none;
         }
-        .bar-instances-wo-prop{
-            position:absolute;
-            top:2px;
-            left:0;
-            height:calc(100% - 4px);
-            width:0%;
-            background:#222;
-            z-index:-1;
-            transition:all 0.5s ease-out;
-        }
-        .number-instances-wo-prop{
-            position:absolute;
-            top:7px;
-            right:6px;
-            color:white;
-            transition:all 0.5s ease-out;
-            font-size:0.8em;
-            opacity:0;
-            transition:opacity 0.5s ease-out;
-            font-weight: bold;
-        }
-        .properties li:hover .bar-instances-wo-prop{
-            background:#2980b9;
-        }
-        .properties li:hover .number-instances-wo-prop{
-            opacity:1;
+        .properties > ul > li {
+            margin-bottom: 4px;
+            padding: 3px 3px;
+            background: #222;
         }
     </style>
 
@@ -193,18 +203,25 @@
         <div class="title">{selectedType.name}</div>
         <div class="id">{selectedType.id}</div>
         <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div>
+        <div class="spaces" if={selectedType.spaces.length}>Spaces:
+            <ul>
+                <li each={space in selectedType.spaces}>
+                    <i class="fa fa-cloud"></i>{space.name}<span class="occurrences">{space.occurrences}</span>
+                </li>
+            </ul>
+        </div>
+        <div class="spaces warning" if={!selectedType.spaces.length}><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div>
         <div class="properties">Properties:
             <ul if={selectedType.properties.length}>
                 <li each={property in selectedType.properties} title={property.name}>
                     {property.name} <span class="occurrences">{property.occurrences}</span>
-                    <div if={property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:{100-property.instancesWithoutProp/selectedType.occurrences*100}%"></div>
-                    <div if={property.instancesWithoutProp} class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedType.occurrences*100)}% ({selectedType.occurrences-property.instancesWithoutProp})</div>
-                    <div if={!property.instancesWithoutProp} class="bar-instances-wo-prop" style="width:100%"></div>
-                    <div if={!property.instancesWithoutProp} class="number-instances-wo-prop">100%</div>
                     <div if={property.targetTypes.length}>
                         <ul class="links">
                             <li each={targetType in property.targetTypes} title={targetType.id}>
-                                <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlighTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a>
+                                <span if={property.excludeLinks} class={targetType.isUnknown?"broken-link":""} title={"links are not available in the graph for property " + property.name}><i class={"fa " + (targetType.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span>
+                                <span if={!property.excludeLinks && targetType.isExcluded} class={targetType.isUnknown?"broken-link":""} title={"type " + targetType.id + " is not available in the graph"}><i class={"fa " + (targetType.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span>
+                                <span if={!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown} class={targetType.isUnknown?"broken-link":""} title={targetType.id + " is an unknown link"}><i class="fa fa-unlink"></i>{targetType.name}</span>
+                                <span if={!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlighTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a></span>
                             </li>
                         </ul>
                     </div>
@@ -220,14 +237,18 @@
             </div>
             <ul class="links" if={selectedType.linksTo.length}>
                 <li each={linkTo in selectedType.linksTo} title={linkTo.targetId}>
-                    <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightLinkTo} onmouseout={unhighlightLinkTo} onclick={selectLinkTo} title={linkTo.targetId}>{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span>
+                    <span if={linkTo.isUnknown} title={linkTo.targetId + " is an unknown link"}><i class="fa fa-unlink"></i>{linkTo.targetName}</span>
+                    <span if={!linkTo.isUnknown && linkTo.isExcluded} class={linkTo.isUnknown?"broken-link":""} title={"type " + linkTo.targetId + " is not available in the graph"}><i class={"fa " + (linkTo.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span>
+                    <span if={!linkTo.isUnknown && !linkTo.isExcluded}><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightLinkTo} onmouseout={unhighlightLinkTo} onclick={selectLinkTo} title={linkTo.targetId}>{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span>
                 </li>
             </ul>
         </div>
         <div class="relations">Links From:
             <ul class="links" if={selectedType.linksFrom.length}>
                 <li each={linkFrom in selectedType.linksFrom} title={linkFrom.sourceId}>
-                    <i class="fa fa-long-arrow-left"></i><a href="#" onmouseover={highlightLinkFrom} onmouseout={unhighlightLinkFrom} onclick={selectLinkFrom} title={linkFrom.sourceId}>{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span>
+                    <span if={linkFrom.isUnknown} title={linkFrom.sourceId + " is an unknown link"}><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span>
+                    <span if={!linkFrom.isUnknown && linkFrom.isExcluded} class={linkFrom.isUnknown?"broken-link":""} title={"type " + linkFrom.sourceId + " is not available in the graph"}><i class={"fa " + (linkFrom.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span>
+                    <span if={!linkFrom.isUnknown && !linkFrom.isExcluded}><i class="fa fa-long-arrow-left"></i><a href="#" onmouseover={highlightLinkFrom} onmouseout={unhighlightLinkFrom} onclick={selectLinkFrom} title={linkFrom.sourceId}>{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span>
                 </li>
             </ul>
         </div>
@@ -259,10 +280,10 @@
         }
 
         this.selectTarget = e => {
-            RiotPolice.trigger("structure:type_select", e.item.targetType.targetId);
+            RiotPolice.trigger("structure:type_select", e.item.targetType.id);
         }
         this.highlightTarget = e => {
-            RiotPolice.trigger("structure:type_highlight", e.item.targetType.targetId);
+            RiotPolice.trigger("structure:type_highlight", e.item.targetType.id);
         }
         this.unhighlightTarget = e => {
             RiotPolice.trigger("structure:type_highlight");

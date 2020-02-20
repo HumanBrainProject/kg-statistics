@@ -618,7 +618,7 @@
                             .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
                             .classed("dephased", true);
                         if (!self.selectedType) {
-                            self.info = d.group;
+                            self.info = d.group + "/" + d.name;
                         } else {
                             self.info = d.name;
                         }

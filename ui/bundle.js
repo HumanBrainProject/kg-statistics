@@ -53544,6 +53544,7 @@ class RiotStore {
     let types = {};
     let typesList = [];
     let typesGraphData = {
+        nodesMap: {},
         nodes: [],
         links: []
     };
@@ -53559,6 +53560,10 @@ class RiotStore {
     let searchQuery = "";
     let searchResults = [];
     
+    const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string"];
+    const excludedProperties = [];
+    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation"];
+
     const hashCode = text => {
         let hash = 0;
         if (typeof text !== "string" || text.length === 0) {
@@ -53603,21 +53608,43 @@ class RiotStore {
     const buildTypes = data => {
 
         const enrichTypeLinksTo = type => {
-            type.properties = type.properties.filter(property => property.name !== "extends" && property.name !== "wasDerivedFrom").sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+            if (excludedProperties.length) {
+                type.properties = type.properties.filter(property => !excludedProperties.includes(property.name));
+            }
+            type.properties = type.properties.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
             const linksTo = type.properties.reduce((acc, property) => {
                 const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                if (excludedPropertiesForLinks.includes(property.name)) {
+                    property.excludeLinks = true;
+                }
                 property.targetTypes.forEach(targetType => {
                     const target = types[targetType.id];
-                    targetType.name = target?target.name:targetType.id;
-                    if (!acc[targetType.id]) {
-                        acc[targetType.id] = {
-                            occurrences: 0,
-                            targetId: targetType.id,
-                            targetName: targetType.name,
-                            provenance: provenance
-                        }
+                    if (target) {
+                        targetType.name = target.name;
+                    } else {
+                        targetType.name = targetType.id;
+                        targetType.isUnknown = true;
                     }
-                    acc[targetType.id].occurrences += targetType.occurrences;
+                    if (excludedTypes.includes(targetType.id)) {
+                        targetType.isExcluded = true;
+                    }
+                    if (!property.excludeLinks) {
+                        if (!acc[targetType.id]) {
+                            acc[targetType.id] = {
+                                occurrences: 0,
+                                targetId: targetType.id,
+                                targetName: targetType.name,
+                                provenance: provenance
+                            }
+                            if (targetType.isExcluded) {
+                                acc[targetType.id].isExcluded = true;
+                            }
+                            if (targetType.isUnknown) {
+                                acc[targetType.id].isUnknown = true;
+                            }
+                        }
+                        acc[targetType.id].occurrences += targetType.occurrences;
+                    }
                 });
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
                 return acc;
@@ -53630,6 +53657,7 @@ class RiotStore {
             const linksFrom = {};
             typesList.forEach(type => {
                 enrichTypeLinksTo(type);
+                type.linksFrom = [];
                 type.linksTo.forEach(linkTo => {
                     if (!linksFrom[linkTo.targetId]) {
                         linksFrom[linkTo.targetId] = {};
@@ -53639,8 +53667,10 @@ class RiotStore {
                             occurrences: 0,
                             sourceId: type.id,
                             sourceName: type.name
+                        };
+                        if (type.isExcluded) {
+                            linksFrom[linkTo.targetId][type.id].isExcluded = true;
                         }
-    
                     }
                     linksFrom[linkTo.targetId][type.id].occurrences += linkTo.occurrences;
                 });
@@ -53655,9 +53685,10 @@ class RiotStore {
     
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
-            if (type.name !== "string") {
-             acc[type.id] = type;
+            if (excludedTypes.includes(type.id)) {
+                type.isExcluded = true;
             }
+            acc[type.id] = type;
             return acc;
         }, {});
 
@@ -53666,9 +53697,16 @@ class RiotStore {
         enrichTypesLinks();
     };
 
-    const getLinkedTypes = type => type.linksTo.reduce((acc, linkTo) => {
+    const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         if (types[linkTo.targetId]) {
             acc.push(types[linkTo.targetId]);
+        }
+        return acc;
+    }, []);
+
+    const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
+        if (types[linkFrom.sourceId]) {
+            acc.push(types[linkFrom.sourceId]);
         }
         return acc;
     }, []);
@@ -53684,15 +53722,15 @@ class RiotStore {
     };
 
     const buildLinksGraphData = () => {
-        const directLinkedTypes = getLinkedTypes(selectedType);
-        const nextLinkedTypes = directLinkedTypes.reduce((acc, type) => {
-            acc.push(...getLinkedTypes(type));
+        const directLinkedToTypes = getLinkedToTypes(selectedType);
+        const directLinkedFromTypes = getLinkedFromTypes(selectedType);
+
+        const nextLinkedToTypes = directLinkedToTypes.reduce((acc, type) => {
+            acc.push(...getLinkedToTypes(type));
             return acc;
         }, []);
         
-        //TODO: get from links
-
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedTypes, ...nextLinkedTypes]);
+        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes, ...nextLinkedToTypes]);
 
         const nodes = typesList.reduce((acc, type) => {
             const hash = hashCode(type.id);
@@ -53702,7 +53740,8 @@ class RiotStore {
                 name: type.name,
                 occurrences: type.occurrences,
                 type: type,
-                linksTo: []
+                linksTo: [],
+                linksFrom: []
             };
             return acc
         }, {});
@@ -53749,7 +53788,18 @@ class RiotStore {
 
     const buildTypesGraphData = () => {
 
+        const nodesMap = {};
         const nodes = typesList.reduce((acc, type) => {
+            const hash = hashCode(type.id);
+            nodesMap[type.id] = {
+                hash: hash,
+                typeHash: hash,
+                name: type.name,
+                occurrences: type.occurrences,
+                type: type,
+                linksTo: [],
+                linksFrom: []
+            };
             type.spaces.forEach(space => {
                 acc.push({
                     hash: hashCode(space.name + "/" + type.id),
@@ -53758,13 +53808,15 @@ class RiotStore {
                     occurrences: space.occurrences,
                     group: space.name,
                     type: type,
-                    linksTo: []
+                    linksTo: [],
+                    linksFrom: []
                 });
             });
             return acc;
         }, []);
 
         typesGraphData = {
+            nodesMap: nodesMap,
             nodes: nodes,
             links: []
         };
@@ -53773,10 +53825,10 @@ class RiotStore {
     const search = query => {
         if (query) {
             searchQuery = query;
-            searchResults = typesList.filter(type => type.name.match(new RegExp(query, "gi"))).sort((a, b) => b.occurrences - a.occurrences);
+            searchResults = typesList.filter(type => !excludedTypes.includes(type.id) && type.name.match(new RegExp(query, "gi"))).sort((a, b) => b.occurrences - a.occurrences);
         } else {
             searchQuery = "";
-            searchResults = typesList.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+            searchResults = typesList.filter(type => !excludedTypes.includes(type.id)).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
         }
     };
 
@@ -53805,7 +53857,7 @@ class RiotStore {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/types?stage=LIVE&withProperties=true`)
+            fetch("/api/types?stage=LIVE&withProperties=true")
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
@@ -53885,7 +53937,7 @@ class RiotStore {
         if (selectedType) {
             highlightedNode = linksGraphData.nodesMap[id];
         } else {
-            highlightedNode = undefined; //TODO: find a node
+            highlightedNode = typesGraphData.nodesMap[id];
         }
         structureStore.toggleState("NODE_HIGHLIGHTED", !!highlightedNode);
         structureStore.notifyChange();
@@ -54347,7 +54399,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
                             .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
                             .classed("dephased", true);
                         if (!self.selectedType) {
-                            self.info = d.group;
+                            self.info = d.group + "/" + d.name;
                         } else {
                             self.info = d.name;
                         }
@@ -54611,7 +54663,7 @@ riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"
         };
 });
 
-riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> </div> <div class="title">{selectedType.name}</div> <div class="id">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="properties">Properties: <ul if="{selectedType.properties.length}"> <li each="{property in selectedType.properties}" title="{property.name}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.instancesWithoutProp}" class="bar-instances-wo-prop" riot-style="width:{100-property.instancesWithoutProp/selectedType.occurrences*100}%"></div> <div if="{property.instancesWithoutProp}" class="number-instances-wo-prop">{Math.round(100-property.instancesWithoutProp/selectedType.occurrences*100)}% ({selectedType.occurrences-property.instancesWithoutProp})</div> <div if="{!property.instancesWithoutProp}" class="bar-instances-wo-prop" style="width:100%"></div> <div if="{!property.instancesWithoutProp}" class="number-instances-wo-prop">100%</div> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}" title="{targetType.id}"> <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightTarget}" onmouseout="{unhighlighTarget}" onclick="{selectTarget}" title="{targetType.id}">{targetType.name}</a> </li> </ul> </div> </li> </ul> <div if="{!selectedType.properties.length}"> type {selectedType.id} does not have any property. </div> </div> <div class="relations">Links To: <div class="norelations" if="{!selectedType.linksTo.length}"> type {selectedType.id} is not linking to any type. </div> <ul class="links" if="{selectedType.linksTo.length}"> <li each="{linkTo in selectedType.linksTo}" title="{linkTo.targetId}"> <i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightLinkTo}" onmouseout="{unhighlightLinkTo}" onclick="{selectLinkTo}" title="{linkTo.targetId}">{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span> </li> </ul> </div> <div class="relations">Links From: <ul class="links" if="{selectedType.linksFrom.length}"> <li each="{linkFrom in selectedType.linksFrom}" title="{linkFrom.sourceId}"> <i class="fa fa-long-arrow-left"></i><a href="#" onmouseover="{highlightLinkFrom}" onmouseout="{unhighlightLinkFrom}" onclick="{selectLinkFrom}" title="{linkFrom.sourceId}">{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span> </li> </ul> </div> </div> <div class="no-selection" if="{!selectedType}"> Select a type on the graph or on the search panel to display its properties </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .no-selection,[data-is="kg-sidebar"] .no-selection{ text-align: center; margin: 35px 0; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; } kg-sidebar .id,[data-is="kg-sidebar"] .id{ font-size:0.6em; line-height: 1em; margin-bottom:12px; } kg-sidebar .version,[data-is="kg-sidebar"] .version{ font-size:1em; line-height: 1.4em; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin-top:12px; font-size:0.8em; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li > i.fa:before,[data-is="kg-sidebar"] ul.links > li > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .bar-instances-wo-prop,[data-is="kg-sidebar"] .bar-instances-wo-prop{ position:absolute; top:2px; left:0; height:calc(100% - 4px); width:0%; background:#222; z-index:-1; transition:all 0.5s ease-out; } kg-sidebar .number-instances-wo-prop,[data-is="kg-sidebar"] .number-instances-wo-prop{ position:absolute; top:7px; right:6px; color:white; transition:all 0.5s ease-out; font-size:0.8em; opacity:0; transition:opacity 0.5s ease-out; font-weight: bold; } kg-sidebar .properties li:hover .bar-instances-wo-prop,[data-is="kg-sidebar"] .properties li:hover .bar-instances-wo-prop{ background:#2980b9; } kg-sidebar .properties li:hover .number-instances-wo-prop,[data-is="kg-sidebar"] .properties li:hover .number-instances-wo-prop{ opacity:1; }', '', function(opts) {
+riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> </div> <div class="title">{selectedType.name}</div> <div class="id">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="spaces" if="{selectedType.spaces.length}">Spaces: <ul> <li each="{space in selectedType.spaces}"> <i class="fa fa-cloud"></i>{space.name}<span class="occurrences">{space.occurrences}</span> </li> </ul> </div> <div class="spaces warning" if="{!selectedType.spaces.length}"><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div> <div class="properties">Properties: <ul if="{selectedType.properties.length}"> <li each="{property in selectedType.properties}" title="{property.name}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}" title="{targetType.id}"> <span if="{property.excludeLinks}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗links are not available in the graph for property ⁗ + property.name}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && targetType.isExcluded}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + targetType.id + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{targetType.id + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{targetType.name}</span> <span if="{!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightTarget}" onmouseout="{unhighlighTarget}" onclick="{selectTarget}" title="{targetType.id}">{targetType.name}</a></span> </li> </ul> </div> </li> </ul> <div if="{!selectedType.properties.length}"> type {selectedType.id} does not have any property. </div> </div> <div class="relations">Links To: <div class="norelations" if="{!selectedType.linksTo.length}"> type {selectedType.id} is not linking to any type. </div> <ul class="links" if="{selectedType.linksTo.length}"> <li each="{linkTo in selectedType.linksTo}" title="{linkTo.targetId}"> <span if="{linkTo.isUnknown}" title="{linkTo.targetId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkTo.targetName}</span> <span if="{!linkTo.isUnknown && linkTo.isExcluded}" class="{linkTo.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkTo.targetId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkTo.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span> <span if="{!linkTo.isUnknown && !linkTo.isExcluded}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightLinkTo}" onmouseout="{unhighlightLinkTo}" onclick="{selectLinkTo}" title="{linkTo.targetId}">{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span> </li> </ul> </div> <div class="relations">Links From: <ul class="links" if="{selectedType.linksFrom.length}"> <li each="{linkFrom in selectedType.linksFrom}" title="{linkFrom.sourceId}"> <span if="{linkFrom.isUnknown}" title="{linkFrom.sourceId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span> <span if="{!linkFrom.isUnknown && linkFrom.isExcluded}" class="{linkFrom.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkFrom.sourceId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkFrom.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span> <span if="{!linkFrom.isUnknown && !linkFrom.isExcluded}"><i class="fa fa-long-arrow-left"></i><a href="#" onmouseover="{highlightLinkFrom}" onmouseout="{unhighlightLinkFrom}" onclick="{selectLinkFrom}" title="{linkFrom.sourceId}">{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span> </li> </ul> </div> </div> <div class="no-selection" if="{!selectedType}"> Select a type on the graph or on the search panel to display its properties </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .no-selection,[data-is="kg-sidebar"] .no-selection{ text-align: center; margin: 35px 0; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; } kg-sidebar .id,[data-is="kg-sidebar"] .id{ font-size:0.6em; line-height: 1em; margin-bottom:12px; } kg-sidebar .spaces,[data-is="kg-sidebar"] .spaces{ margin-bottom:6px; } kg-sidebar .warning,[data-is="kg-sidebar"] .warning{ color: red; } kg-sidebar .spaces ul,[data-is="kg-sidebar"] .spaces ul{ list-style-type: none; margin: 6px 0 12px 0; padding-left: 5px; } kg-sidebar .spaces ul li,[data-is="kg-sidebar"] .spaces ul li{ margin-right: 3px; } kg-sidebar .spaces ul li i.fa:before,[data-is="kg-sidebar"] .spaces ul li i.fa:before{ margin-right: 5px; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .link-disabled,[data-is="kg-sidebar"] .link-disabled{ text-decoration: line-through; color: #9a9a9a; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin:12px 12px 16px 12px; font-size:0.8em; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li .broken-link,[data-is="kg-sidebar"] ul.links > li .broken-link{ color: red; } kg-sidebar ul.links > li .broken-link .link-disabled,[data-is="kg-sidebar"] ul.links > li .broken-link .link-disabled{ color: red; } kg-sidebar ul.links > li > span > i.fa:before,[data-is="kg-sidebar"] ul.links > li > span > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .properties > ul > li,[data-is="kg-sidebar"] .properties > ul > li{ margin-bottom: 4px; padding: 3px 3px; background: #222; }', '', function(opts) {
         this.selectedType = false;
 
         this.on("mount", () => {
@@ -54634,10 +54686,10 @@ riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button
         }
 
         this.selectTarget = e => {
-            RiotPolice.trigger("structure:type_select", e.item.targetType.targetId);
+            RiotPolice.trigger("structure:type_select", e.item.targetType.id);
         }
         this.highlightTarget = e => {
-            RiotPolice.trigger("structure:type_highlight", e.item.targetType.targetId);
+            RiotPolice.trigger("structure:type_highlight", e.item.targetType.id);
         }
         this.unhighlightTarget = e => {
             RiotPolice.trigger("structure:type_highlight");
