@@ -36,7 +36,7 @@
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string"];
     const excludedProperties = [];
-    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation"];
+    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation", "subclassof"];
 
     const hashCode = text => {
         let hash = 0;
@@ -199,57 +199,65 @@
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
+        /*
         const nextLinkedToTypes = directLinkedToTypes.reduce((acc, type) => {
             acc.push(...getLinkedToTypes(type));
             return acc;
         }, []);
+        */
         
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes, ...nextLinkedToTypes]);
+        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);//, ...nextLinkedToTypes]);
 
         const nodes = typesList.reduce((acc, type) => {
-            const hash = hashCode(type.id);
-            acc[type.id] = {
-                hash: hash,
-                typeHash: hash,
-                name: type.name,
-                occurrences: type.occurrences,
-                type: type,
-                linksTo: [],
-                linksFrom: []
-            };
+            if (!excludedTypes.includes(type.id)) {
+                const hash = hashCode(type.id);
+                acc[type.id] = {
+                    hash: hash,
+                    typeHash: hash,
+                    name: type.name,
+                    occurrences: type.occurrences,
+                    type: type,
+                    linksTo: [],
+                    linksFrom: []
+                };
+            }
             return acc
         }, {});
 
         typesList.forEach(type => {
             const node = nodes[type.id];
-            node.linksTo = type.linksTo.reduce((acc, relation) => {
-                if (nodes[relation.targetId]) {
-                    acc.push(nodes[relation.targetId]);
-                }
-                return acc;
-            }, []);
+            if (node) { // node can be undefined because of excludedTypes
+                node.linksTo = type.linksTo.reduce((acc, relation) => {
+                    if (nodes[relation.targetId]) {
+                        acc.push(nodes[relation.targetId]);
+                    }
+                    return acc;
+                }, []);
+            }
         });
 
         const links = typesList.reduce((acc, type) => {
             const sourceNode = nodes[type.id];
-            type.linksTo
-                .forEach(relation => {
-                    if (relation.target !== type.id) {
-                        const targetNode = nodes[relation.targetId];
-                        if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
-                            const key = type.id + "-" + relation.targetId;
-                            if (!acc[key]) {
-                                acc[key] = {
-                                    occurrences: 0,
-                                    source: sourceNode,
-                                    target: targetNode,
-                                    provenance: relation.provenance
+            if (sourceNode) { // sourceNode can be undefined because of excludedTypes
+                type.linksTo
+                    .forEach(relation => {
+                        if (relation.target !== type.id && !excludedTypes.includes(relation.target)) {
+                            const targetNode = nodes[relation.targetId];
+                            if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
+                                const key = type.id + "-" + relation.targetId;
+                                if (!acc[key]) {
+                                    acc[key] = {
+                                        occurrences: 0,
+                                        source: sourceNode,
+                                        target: targetNode,
+                                        provenance: relation.provenance
+                                    }
                                 }
+                                acc[key].occurrences += relation.occurrences;
                             }
-                            acc[key].occurrences += relation.occurrences;
                         }
-                    }
-                });
+                    });
+            }
             return acc;
         }, {});
 
@@ -264,28 +272,30 @@
 
         const nodesMap = {};
         const nodes = typesList.reduce((acc, type) => {
-            const hash = hashCode(type.id);
-            nodesMap[type.id] = {
-                hash: hash,
-                typeHash: hash,
-                name: type.name,
-                occurrences: type.occurrences,
-                type: type,
-                linksTo: [],
-                linksFrom: []
-            };
-            type.spaces.forEach(space => {
-                acc.push({
-                    hash: hashCode(space.name + "/" + type.id),
-                    typeHash: hashCode(type.id),
+            if (!excludedTypes.includes(type.id)) {
+                const hash = hashCode(type.id);
+                nodesMap[type.id] = {
+                    hash: hash,
+                    typeHash: hash,
                     name: type.name,
-                    occurrences: space.occurrences,
-                    group: space.name,
+                    occurrences: type.occurrences,
                     type: type,
                     linksTo: [],
                     linksFrom: []
+                };
+                type.spaces.forEach(space => {
+                    acc.push({
+                        hash: hashCode(space.name + "/" + type.id),
+                        typeHash: hashCode(type.id),
+                        name: type.name,
+                        occurrences: space.occurrences,
+                        group: space.name,
+                        type: type,
+                        linksTo: [],
+                        linksFrom: []
+                    });
                 });
-            });
+            }
             return acc;
         }, []);
 
@@ -358,8 +368,10 @@
                 search();
                 highlightedNode = undefined;
                 selectedType = node.type;
-                selectedNode = node;
                 buildLinksGraphData();
+                selectedNode = linksGraphData.nodesMap[selectedType.id];
+                selectedNode.x = node.x;
+                selectedNode.y = node.y;
                 structureStore.toggleState("NODE_HIGHLIGHTED", false);
                 structureStore.toggleState("NODE_SELECTED", !!node);
                 structureStore.toggleState("SHOW_SEARCH_PANEL", false);

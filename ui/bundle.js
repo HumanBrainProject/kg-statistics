@@ -53562,7 +53562,7 @@ class RiotStore {
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string"];
     const excludedProperties = [];
-    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation"];
+    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation", "subclassof"];
 
     const hashCode = text => {
         let hash = 0;
@@ -53725,57 +53725,65 @@ class RiotStore {
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
+        /*
         const nextLinkedToTypes = directLinkedToTypes.reduce((acc, type) => {
             acc.push(...getLinkedToTypes(type));
             return acc;
         }, []);
+        */
         
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes, ...nextLinkedToTypes]);
+        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);//, ...nextLinkedToTypes]);
 
         const nodes = typesList.reduce((acc, type) => {
-            const hash = hashCode(type.id);
-            acc[type.id] = {
-                hash: hash,
-                typeHash: hash,
-                name: type.name,
-                occurrences: type.occurrences,
-                type: type,
-                linksTo: [],
-                linksFrom: []
-            };
+            if (!excludedTypes.includes(type.id)) {
+                const hash = hashCode(type.id);
+                acc[type.id] = {
+                    hash: hash,
+                    typeHash: hash,
+                    name: type.name,
+                    occurrences: type.occurrences,
+                    type: type,
+                    linksTo: [],
+                    linksFrom: []
+                };
+            }
             return acc
         }, {});
 
         typesList.forEach(type => {
             const node = nodes[type.id];
-            node.linksTo = type.linksTo.reduce((acc, relation) => {
-                if (nodes[relation.targetId]) {
-                    acc.push(nodes[relation.targetId]);
-                }
-                return acc;
-            }, []);
+            if (node) { // node can be undefined because of excludedTypes
+                node.linksTo = type.linksTo.reduce((acc, relation) => {
+                    if (nodes[relation.targetId]) {
+                        acc.push(nodes[relation.targetId]);
+                    }
+                    return acc;
+                }, []);
+            }
         });
 
         const links = typesList.reduce((acc, type) => {
             const sourceNode = nodes[type.id];
-            type.linksTo
-                .forEach(relation => {
-                    if (relation.target !== type.id) {
-                        const targetNode = nodes[relation.targetId];
-                        if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
-                            const key = type.id + "-" + relation.targetId;
-                            if (!acc[key]) {
-                                acc[key] = {
-                                    occurrences: 0,
-                                    source: sourceNode,
-                                    target: targetNode,
-                                    provenance: relation.provenance
+            if (sourceNode) { // sourceNode can be undefined because of excludedTypes
+                type.linksTo
+                    .forEach(relation => {
+                        if (relation.target !== type.id && !excludedTypes.includes(relation.target)) {
+                            const targetNode = nodes[relation.targetId];
+                            if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
+                                const key = type.id + "-" + relation.targetId;
+                                if (!acc[key]) {
+                                    acc[key] = {
+                                        occurrences: 0,
+                                        source: sourceNode,
+                                        target: targetNode,
+                                        provenance: relation.provenance
+                                    }
                                 }
+                                acc[key].occurrences += relation.occurrences;
                             }
-                            acc[key].occurrences += relation.occurrences;
                         }
-                    }
-                });
+                    });
+            }
             return acc;
         }, {});
 
@@ -53790,28 +53798,30 @@ class RiotStore {
 
         const nodesMap = {};
         const nodes = typesList.reduce((acc, type) => {
-            const hash = hashCode(type.id);
-            nodesMap[type.id] = {
-                hash: hash,
-                typeHash: hash,
-                name: type.name,
-                occurrences: type.occurrences,
-                type: type,
-                linksTo: [],
-                linksFrom: []
-            };
-            type.spaces.forEach(space => {
-                acc.push({
-                    hash: hashCode(space.name + "/" + type.id),
-                    typeHash: hashCode(type.id),
+            if (!excludedTypes.includes(type.id)) {
+                const hash = hashCode(type.id);
+                nodesMap[type.id] = {
+                    hash: hash,
+                    typeHash: hash,
                     name: type.name,
-                    occurrences: space.occurrences,
-                    group: space.name,
+                    occurrences: type.occurrences,
                     type: type,
                     linksTo: [],
                     linksFrom: []
+                };
+                type.spaces.forEach(space => {
+                    acc.push({
+                        hash: hashCode(space.name + "/" + type.id),
+                        typeHash: hashCode(type.id),
+                        name: type.name,
+                        occurrences: space.occurrences,
+                        group: space.name,
+                        type: type,
+                        linksTo: [],
+                        linksFrom: []
+                    });
                 });
-            });
+            }
             return acc;
         }, []);
 
@@ -53884,8 +53894,10 @@ class RiotStore {
                 search();
                 highlightedNode = undefined;
                 selectedType = node.type;
-                selectedNode = node;
                 buildLinksGraphData();
+                selectedNode = linksGraphData.nodesMap[selectedType.id];
+                selectedNode.x = node.x;
+                selectedNode.y = node.y;
                 structureStore.toggleState("NODE_HIGHLIGHTED", false);
                 structureStore.toggleState("NODE_SELECTED", !!node);
                 structureStore.toggleState("SHOW_SEARCH_PANEL", false);
@@ -54030,8 +54042,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
         var nodeRscale;
         var linkRscale;
 
-        this.initialZoom = 1;
-        this.groupInitialZoom = 0.5;
+        this.initialZoom = 0.5;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -54081,20 +54092,11 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
 
             const newSelectedNode = this.stores.structure.getSelectedNode();
             if (newSelectedNode) {
-                let recenter = newSelectedNode !== this.selectedNode;
                 this.selectedNode = newSelectedNode;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
                 this.svg.selectAll(".related-to_" + this.selectedNode.hash).classed("selectedRelation", true);
                 this.svg.select(".is_" + this.selectedNode.hash).classed("selectedNode", true);
-                if (recenter) {
-                    let width = this.svg.node().getBoundingClientRect().width;
-                    let height = this.svg.node().getBoundingClientRect().height;
-                    let zoomScaleTo = 1.3;
-                    this.svg.transition().duration(500)
-                        .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 - zoomScaleTo * this.selectedNode
-                            .x, height / 2 - zoomScaleTo * this.selectedNode.y).scale(zoomScaleTo));
-                }
             } else {
                 if (this.selectedNode !== undefined) {
                     this.resetView();
@@ -54131,7 +54133,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
             let height = this.svg.node().getBoundingClientRect().height;
-            const zoom = this.selectedType?this.initialZoom:this.groupInitialZoom;
+            const zoom = this.initialZoom;
             let zoomScaleTo = zoom;
             this.svg.transition().duration(500)
                 .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 * zoom, height / 2 *
@@ -54172,10 +54174,10 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
 
         this.regroup = () => {
             var self = this;
-            this.simulation.force("groupOnXAxis", d3.forceX().strength(0.03))
+            this.simulation.force("groupXAxis", d3.forceX().strength(0.03))
                 .force("groupOnYAxis", d3.forceY().strength(0.03));
             this.simulation.on("end", () => {
-                self.simulation.force("groupOnXAxis", d3.forceX().strength(0))
+                self.simulation.force("groupXAxis", d3.forceX().strength(0))
                     .force("groupOnYAxis", d3.forceY().strength(0));
             });
             this.simulation.alpha(1).restart();
@@ -54278,7 +54280,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
 
             this.svg.call(this.zoom);
 
-            var previousZoom = this.selectedType?this.initialZoom:this.groupInitialZoom;
+            var previousZoom = this.initialZoom;
             this.svg.call(this.zoom.scaleTo, previousZoom);
             hull.call(this.zoom.scaleTo, previousZoom);
 
@@ -54450,43 +54452,46 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <svg class="nodegraph" ref=
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 4);
 
-                var coordMap = new Map();
-                nodes.each(node => {
-                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
-                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
-                });
+                if (!self.selectedType) {
 
-                var centroids = new Map();
+                    var coordMap = new Map();
+                    nodes.each(node => {
+                        const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
+                        (coordMap[node.group] = coordMap[node.group] || []).push(coord)
+                    });
 
-                for (var group in coordMap) {
-                    var groupNodes = coordMap[group];
-                    var n = groupNodes.length;
-                    var cx = 0;
-                    var tx = 0;
-                    var cy = 0;
-                    var ty = 0;
-                    var totalNumOfInstances = 0;
-                    groupNodes.forEach(d => {
-                        tx += d.x;
-                        ty += d.y;
-                        totalNumOfInstances += d.occurrences;
-                    })
+                    var centroids = new Map();
 
-                    cx = tx/n;
-                    cy = ty/n;
+                    for (var group in coordMap) {
+                        var groupNodes = coordMap[group];
+                        var n = groupNodes.length;
+                        var cx = 0;
+                        var tx = 0;
+                        var cy = 0;
+                        var ty = 0;
+                        var totalNumOfInstances = 0;
+                        groupNodes.forEach(d => {
+                            tx += d.x;
+                            ty += d.y;
+                            totalNumOfInstances += d.occurrences;
+                        })
 
-                    centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;
+                        cx = tx/n;
+                        cy = ty/n;
+
+                        centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;
+                    }
+
+                    var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
+                        .strength(0.3);
+
+                    var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
+                        .strength(0.3);
+
+                    self.simulation
+                        .force("x", forceX)
+                        .force("y", forceY);
                 }
-
-                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
-                    .strength(0.3)
-
-                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
-                    .strength(0.3)
-
-                self.simulation
-                    .force("x", forceX)
-                    .force("y", forceY)
 
                 if (!self.selectedType) {
                     updateGroups();

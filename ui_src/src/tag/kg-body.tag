@@ -239,8 +239,7 @@
         var nodeRscale;
         var linkRscale;
 
-        this.initialZoom = 1;
-        this.groupInitialZoom = 0.5; //0.3;
+        this.initialZoom = 0.5;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -292,20 +291,11 @@
 
             const newSelectedNode = this.stores.structure.getSelectedNode();
             if (newSelectedNode) {
-                let recenter = newSelectedNode !== this.selectedNode;
                 this.selectedNode = newSelectedNode;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
                 this.svg.selectAll(".related-to_" + this.selectedNode.hash).classed("selectedRelation", true);
                 this.svg.select(".is_" + this.selectedNode.hash).classed("selectedNode", true);
-                if (recenter) {
-                    let width = this.svg.node().getBoundingClientRect().width;
-                    let height = this.svg.node().getBoundingClientRect().height;
-                    let zoomScaleTo = 1.3;
-                    this.svg.transition().duration(500)
-                        .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 - zoomScaleTo * this.selectedNode
-                            .x, height / 2 - zoomScaleTo * this.selectedNode.y).scale(zoomScaleTo));
-                }
             } else {
                 if (this.selectedNode !== undefined) {
                     this.resetView();
@@ -342,7 +332,7 @@
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
             let height = this.svg.node().getBoundingClientRect().height;
-            const zoom = this.selectedType?this.initialZoom:this.groupInitialZoom;
+            const zoom = this.initialZoom;
             let zoomScaleTo = zoom;
             this.svg.transition().duration(500)
                 .call(this.zoom.transform, d3.zoomIdentity.translate(width / 2 * zoom, height / 2 *
@@ -383,10 +373,10 @@
 
         this.regroup = () => {
             var self = this;
-            this.simulation.force("groupOnXAxis", d3.forceX().strength(0.03))
+            this.simulation.force("groupXAxis", d3.forceX().strength(0.03))
                 .force("groupOnYAxis", d3.forceY().strength(0.03));
             this.simulation.on("end", () => {
-                self.simulation.force("groupOnXAxis", d3.forceX().strength(0))
+                self.simulation.force("groupXAxis", d3.forceX().strength(0))
                     .force("groupOnYAxis", d3.forceY().strength(0));
             });
             this.simulation.alpha(1).restart();
@@ -495,7 +485,7 @@
             this.svg.call(this.zoom);
 
             //Initial scale
-            var previousZoom = this.selectedType?this.initialZoom:this.groupInitialZoom;
+            var previousZoom = this.initialZoom;
             this.svg.call(this.zoom.scaleTo, previousZoom);
             hull.call(this.zoom.scaleTo, previousZoom);
             
@@ -670,49 +660,51 @@
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 4);
                 
-                //Regrouping nodes by private spaces
-                var coordMap = new Map();
-                nodes.each(node => {
-                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
-                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
-                });
+                if (!self.selectedType) {
+                    //Regrouping nodes by private spaces
+                    var coordMap = new Map();
+                    nodes.each(node => {
+                        const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
+                        (coordMap[node.group] = coordMap[node.group] || []).push(coord)
+                    });
 
-                // get the centroid of each group:
-                var centroids = new Map();
+                    // get the centroid of each group:
+                    var centroids = new Map();
 
-                for (var group in coordMap) {
-                    var groupNodes = coordMap[group];
-                    var n = groupNodes.length;
-                    var cx = 0;
-                    var tx = 0;
-                    var cy = 0;
-                    var ty = 0;
-                    var totalNumOfInstances = 0;
-                    groupNodes.forEach(d => {
-                        tx += d.x;
-                        ty += d.y;
-                        totalNumOfInstances += d.occurrences;
-                    })
+                    for (var group in coordMap) {
+                        var groupNodes = coordMap[group];
+                        var n = groupNodes.length;
+                        var cx = 0;
+                        var tx = 0;
+                        var cy = 0;
+                        var ty = 0;
+                        var totalNumOfInstances = 0;
+                        groupNodes.forEach(d => {
+                            tx += d.x;
+                            ty += d.y;
+                            totalNumOfInstances += d.occurrences;
+                        })
 
-                    cx = tx/n;
-                    cy = ty/n;
+                        cx = tx/n;
+                        cy = ty/n;
 
-                    centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;  
+                        centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;  
+                    }
+
+                    //Make the x-position equal to the x-position specified in the module positioning object or, if not in
+                    //the hash, then set it to 250
+                    var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
+                        .strength(0.3);
+
+                    //Same for forceY--these act as a gravity parameter so the different strength determines how closely
+                    //the individual nodes are pulled to the center of their module position
+                    var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
+                        .strength(0.3);
+
+                    self.simulation
+                        .force("x", forceX)
+                        .force("y", forceY);
                 }
-
-                //Make the x-position equal to the x-position specified in the module positioning object or, if not in
-                //the hash, then set it to 250
-                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
-                    .strength(0.3)
-
-                //Same for forceY--these act as a gravity parameter so the different strength determines how closely
-                //the individual nodes are pulled to the center of their module position
-                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
-                    .strength(0.3)
-
-                self.simulation
-                    .force("x", forceX)
-                    .force("y", forceY)
 
                 if (!self.selectedType) {
                     updateGroups();
