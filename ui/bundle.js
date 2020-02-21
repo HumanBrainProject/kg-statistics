@@ -36472,6 +36472,7 @@ class RiotStore {
     let selectedType = null;
     let lastUpdate = null;
     let selectedNode;
+    let releasedStage = false;
     let highlightedNode;
     let searchQuery = "";
     let searchResults = [];
@@ -36770,7 +36771,7 @@ class RiotStore {
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "NODE_SELECTED", "NODE_HIGHLIGHTED",
-            "SHOW_SEARCH_PANEL"
+            "SHOW_SEARCH_PANEL", "STAGE_RELEASED"
         ],
         init, reset);
 
@@ -36778,12 +36779,19 @@ class RiotStore {
      * Store trigerrable actions
      */
 
+    structureStore.addAction("structure:stage_toggle", () => {
+        releasedStage  = !releasedStage;
+        structureStore.toggleState("STAGE_RELEASED", releasedStage);
+        structureStore.notifyChange();
+        RiotPolice.trigger("structure:load")
+    });
+
     structureStore.addAction("structure:load", () => {
         if (!structureStore.is("STRUCTURE_LOADING")) {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch("/api/types?stage=LIVE&withProperties=true")
+            fetch(`/api/types?stage=${releasedStage ? "RELEASED" : "LIVE"}&withProperties=true`)
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
@@ -37638,7 +37646,7 @@ riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button
 
 });
 
-riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <div class="header-right" if="{isLoaded}"> <div class="date" if="{date}">KG State at : {date}</div> <button class="refresh" onclick="{refresh}"> <i class="fa fa-refresh">&nbsp;Refresh</i> </button> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); } kg-topbar button.refresh,[data-is="kg-topbar"] button.refresh{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #333; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-topbar button.refresh:hover,[data-is="kg-topbar"] button.refresh:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
+riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <kg-view-mode if="{isLoaded}"></kg-view-mode> <div class="header-right" if="{isLoaded}"> <div class="date" if="{date}">KG State at : {date}</div> <button class="refresh" onclick="{refresh}"> <i class="fa fa-refresh">&nbsp;Refresh</i> </button> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); } kg-topbar button.refresh,[data-is="kg-topbar"] button.refresh{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #333; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-topbar button.refresh:hover,[data-is="kg-topbar"] button.refresh:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
         this.date = "";
         this.isLoaded = false;
 
@@ -37657,7 +37665,28 @@ riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src=
          this.date = this.stores.structure.getLastUpdate();
         });
 
-        this.refresh = e => RiotPolice.trigger("structure:load");
+        this.refresh = () => RiotPolice.trigger("structure:load");
+});
+
+riot.tag2('kg-view-mode', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: releasedStage}" onclick="{toggle}"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !releasedStage}" onclick="{toggle}"> <i class="fa fa-close"></i> </button> </div> <span>show release data</span> </div>', 'kg-view-mode,[data-is="kg-view-mode"]{ display:block; color: white; } kg-view-mode .group-view__toggle,[data-is="kg-view-mode"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #141618; } kg-view-mode button.group-view__toggle__button,[data-is="kg-view-mode"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-view-mode button.group-view__toggle__button.selected,[data-is="kg-view-mode"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-view-mode span,[data-is="kg-view-mode"] span{ padding-left: 3px; }', '', function(opts) {
+        this.releasedStage = false;
+
+        this.on("mount", () => {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
+            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
+        });
+
+        this.toggle = () =>  RiotPolice.trigger("structure:stage_toggle");
 });
 /*
 *   Copyright (c) 2018, EPFL/Human Brain Project PCO

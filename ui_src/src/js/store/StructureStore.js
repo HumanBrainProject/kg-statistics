@@ -30,6 +30,7 @@
     let selectedType = null;
     let lastUpdate = null;
     let selectedNode;
+    let releasedStage = false;
     let highlightedNode;
     let searchQuery = "";
     let searchResults = [];
@@ -328,7 +329,7 @@
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "NODE_SELECTED", "NODE_HIGHLIGHTED",
-            "SHOW_SEARCH_PANEL"
+            "SHOW_SEARCH_PANEL", "STAGE_RELEASED"
         ],
         init, reset);
 
@@ -336,12 +337,19 @@
      * Store trigerrable actions
      */
 
+    structureStore.addAction("structure:stage_toggle", () => {
+        releasedStage  = !releasedStage;
+        structureStore.toggleState("STAGE_RELEASED", releasedStage);
+        structureStore.notifyChange();
+        RiotPolice.trigger("structure:load")
+    });
+
     structureStore.addAction("structure:load", () => {
         if (!structureStore.is("STRUCTURE_LOADING")) {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch("/api/types?stage=LIVE&withProperties=true")
+            fetch(`/api/types?stage=${releasedStage ? "RELEASED" : "LIVE"}&withProperties=true`)
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
