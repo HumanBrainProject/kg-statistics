@@ -188,9 +188,17 @@
             left: 20px;
             color: white;
         }
+
+        .stage {
+            position: absolute;
+            top: 20px;
+            right: 60px;
+            color: white;   
+        }
     </style>
     <div class="info">{info}</div>
     <svg class="nodegraph" ref="svg"></svg>
+    <div class="stage">Stage: {releasedStage ? "RELEASED" : "LIVE"}</div>
     
     <div class="actions">
         <button class="control-button zoom-in" onclick={zoomIn}>
@@ -256,6 +264,7 @@
             if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
+            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
             var self = this;
             const previousLastUpdate = this.lastUpdate;
             this.lastUpdate = this.stores.structure.getLastUpdate();
