@@ -432,7 +432,7 @@
                     .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
-                    .radius(d => nodeRscale(d.occurrences) + 8)
+                    .radius(d => !this.selectedType ? nodeRscale(d.occurrences) + 8:30)
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
