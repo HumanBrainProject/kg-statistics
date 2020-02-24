@@ -38,7 +38,7 @@
             font-size:0.6em;
             line-height: 1em;
             margin-bottom:12px;
-            word-break: break-all;
+            word-break: break-word;
         }
 
         .spaces {
@@ -101,13 +101,13 @@
         .norelations{
             margin:12px 12px 16px 12px;
             font-size:0.8em;
-            word-break: break-all;
+            word-break: break-word;
         }
 
         .noproperties{
             margin:12px 12px 16px 12px;
             font-size:0.8em;
-            word-break: break-all;
+            word-break: break-word;
         }
 
         ul{
