@@ -188,6 +188,13 @@
             left: 20px;
             color: white;
         }
+        .details{
+            position: absolute;
+            top: 40px;
+            left: 20px;
+            color: white;
+            font-size: 0.6em;
+        }
 
         .stage {
             position: absolute;
@@ -197,6 +204,7 @@
         }
     </style>
     <div class="info">{info}</div>
+    <div class="details">{details}</div>
     <svg class="nodegraph" ref="svg"></svg>
     <div class="stage">Stage: {releasedStage ? "RELEASED" : "LIVE"}</div>
     
@@ -233,6 +241,7 @@
         this.nodes = [];
         this.links = [];
         this.info = "";
+        this.details = "";
         this.color = d3.scaleOrdinal(d3.schemeCategory20);
 
         var polygon;
@@ -286,6 +295,8 @@
                 .range([3,maxLinkSize])
 
             if (!this.svg || this.lastUpdate !== previousLastUpdate || this.selectedType !== previousSelectedType) {
+                this.info = "";
+                this.details = "";
                 this.nodes = nodes;
                 this.links = links;
 
@@ -472,11 +483,13 @@
                         .on('drag', group_dragged)
                         .on('end', groupDragEnded)
                     ).on("mouseover", d => {
-                        self.info = d.key
+                        self.info = d.key;
+                        self.details = "";
                         self.update()
                     })
                     .on("mouseout", d => {
-                        self.info = ""
+                        self.info = "";
+                        self.details = "";
                         self.update()
                     });
             }
@@ -519,17 +532,19 @@
                 .on("mouseover", d => {
                     if (!self.selectedType) {
                         if (d.target.group == d.source.group){
-                            self.info = d.source.group
+                            self.info = d.source.group;
                         } else {
-                            self.info = "from " + d.source.group + " to " + d.target.group
+                            self.info = "from " + d.source.group + " to " + d.target.group;
                         }
                     } else {
-                        self.info = "from " + d.source.name + " to " + d.target.name
+                        self.info = "from " + d.source.name + " to " + d.target.name;
                     }
-                    self.update()
+                    self.details = "";
+                    self.update();
                 })
                 .on("mouseout", d => {
-                    self.info = ""
+                    self.info = "";
+                    self.details = "";
                     self.update()
                 })
 
@@ -566,8 +581,9 @@
                                 self.info = d.source.group + " <-> " + d.target.group;
                             }
                         } else {
-                            self.info = "from " + d.source.name + " to " + d.target.name
+                            self.info = "from " + d.source.name + " to " + d.target.name;
                         }
+                        self.details = "";
                         self.update()
                     })
                     .on("mouseout", d => {
@@ -586,7 +602,7 @@
                         $this.append("circle")
                             .attr("class", "node__circle")
                             .attr("r", d => nodeRscale(d.occurrences))
-                            .append('title').text(d.name);
+                            .append('title').text(d.id);
 
                         $this.append("text")
                             .attr("class", "node__label")
@@ -621,11 +637,13 @@
                         } else {
                             self.info = d.name;
                         }
+                        self.details = d.id;
                         self.update();
                     })
                     .on("mouseout", d => {
                         self.view.selectAll(".dephased").classed("dephased", false);
                         self.info = "";
+                        self.details = "";
                         self.update();
                     })
                     .on("click", d => {

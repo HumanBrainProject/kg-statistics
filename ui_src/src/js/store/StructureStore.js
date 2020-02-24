@@ -215,6 +215,7 @@
                 acc[type.id] = {
                     hash: hash,
                     typeHash: hash,
+                    id: type.id,
                     name: type.name,
                     occurrences: type.occurrences,
                     type: type,
@@ -278,6 +279,7 @@
                 nodesMap[type.id] = {
                     hash: hash,
                     typeHash: hash,
+                    id: type.id,
                     name: type.name,
                     occurrences: type.occurrences,
                     type: type,
@@ -288,6 +290,7 @@
                     acc.push({
                         hash: hashCode(space.name + "/" + type.id),
                         typeHash: hashCode(type.id),
+                        id: type.id,
                         name: type.name,
                         occurrences: space.occurrences,
                         group: space.name,

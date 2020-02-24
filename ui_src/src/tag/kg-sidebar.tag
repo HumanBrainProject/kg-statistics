@@ -101,6 +101,11 @@
             font-size:0.8em;
         }
 
+        .noproperties{
+            margin:12px 12px 16px 12px;
+            font-size:0.8em;
+        }
+
         ul{
             font-size:0.8em;
             padding-left:18px;
@@ -212,6 +217,9 @@
         </div>
         <div class="spaces warning" if={!selectedType.spaces.length}><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div>
         <div class="properties">Properties:
+            <div class="noproperties" if={!selectedType.properties.length}>
+                type {selectedType.id} does not have any property.
+            </div>
             <ul if={selectedType.properties.length}>
                 <li each={property in selectedType.properties} title={property.name}>
                     {property.name} <span class="occurrences">{property.occurrences}</span>
@@ -227,9 +235,6 @@
                     </div>
                 </li>
             </ul>
-            <div if={!selectedType.properties.length}>
-                type {selectedType.id} does not have any property.
-            </div>
         </div>
         <div class="relations">Links To:
             <div class="norelations" if={!selectedType.linksTo.length}>
@@ -244,6 +249,9 @@
             </ul>
         </div>
         <div class="relations">Links From:
+            <div class="norelations" if={!selectedType.linksFrom.length}>
+                type {selectedType.id} is not linked by any type.
+            </div>
             <ul class="links" if={selectedType.linksFrom.length}>
                 <li each={linkFrom in selectedType.linksFrom} title={linkFrom.sourceId}>
                     <span if={linkFrom.isUnknown} title={linkFrom.sourceId + " is an unknown link"}><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span>
