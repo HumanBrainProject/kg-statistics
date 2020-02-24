@@ -31,12 +31,14 @@
         .title{
             font-size:1.2em;
             line-height: 1.6em;
+            margin: 10px 0 12px 0;
         }
 
         .id{
             font-size:0.6em;
             line-height: 1em;
             margin-bottom:12px;
+            word-break: break-all;
         }
 
         .spaces {
@@ -99,11 +101,13 @@
         .norelations{
             margin:12px 12px 16px 12px;
             font-size:0.8em;
+            word-break: break-all;
         }
 
         .noproperties{
             margin:12px 12px 16px 12px;
             font-size:0.8em;
+            word-break: break-all;
         }
 
         ul{
