@@ -35,9 +35,9 @@
     let searchQuery = "";
     let searchResults = [];
     
-    const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string"];
+    const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
     const excludedProperties = [];
-    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "qualifiedAssociation", "subclassof"];
+    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "subclassof"];
 
     const hashCode = text => {
         let hash = 0;
