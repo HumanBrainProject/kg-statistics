@@ -225,7 +225,7 @@
                 type {selectedType.id} does not have any property.
             </div>
             <ul if={selectedType.properties.length}>
-                <li each={property in selectedType.properties} title={property.name}>
+                <li each={property in selectedType.properties} title={property.id}>
                     {property.name} <span class="occurrences">{property.occurrences}</span>
                     <div if={property.targetTypes.length}>
                         <ul class="links">

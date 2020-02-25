@@ -37,7 +37,7 @@
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
     const excludedProperties = [];
-    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "subclassof"];
+    const excludedPropertiesForLinks = ["extends", "wasDerivedFrom", "wasRevisionOf", "subclassof"];
 
     const hashCode = text => {
         let hash = 0;
@@ -53,28 +53,61 @@
     };
 
     const simplifySemantics = rawtype => {
+
+
+        const simplifyPropertiesSemeantics = properties => {
+
+            const getName = (id, name) => { 
+                if (typeof name === "string") {
+                    return name;
+                }
+                if (typeof id === "string") {
+                    const m = id.match(/^.*\/([a-z0-9_\-]+#)?([a-z0-9_\-]+)$/i);
+                    if (m && m.length >= 2) {
+                        return m[2];
+                    }
+                    return id;
+                }
+                return undefined;
+            };
+
+            if (!Array.isArray(properties)) {
+                return [];
+            }
+            return properties.map(property => ({
+                id: property["http://schema.org/identifier"],
+                name: getName(property["http://schema.org/identifier"], property["http://schema.org/name"]),
+                occurrences: property["https://kg.ebrains.eu/vocab/meta/occurrences"],
+                targetTypes: property["https://kg.ebrains.eu/vocab/meta/targetTypes"].map(targetType => {
+                    const type = {
+                        id: targetType["https://kg.ebrains.eu/vocab/meta/type"],
+                        occurrences: targetType["https://kg.ebrains.eu/vocab/meta/occurrences"],
+                        spaces: []
+                    };
+                    if (Array.isArray(targetType["https://kg.ebrains.eu/vocab/meta/spaces"])) {
+                        type.spaces = targetType["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
+                            type: space["https://kg.ebrains.eu/vocab/meta/type"],
+                            name: space["https://kg.ebrains.eu/vocab/meta/space"],
+                            occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
+                        }));
+                    }
+                    return type;
+                })
+            }));
+        };
+
         const type = {
             id: rawtype["http://schema.org/identifier"],
             name: rawtype["http://schema.org/name"],
             occurrences: rawtype["https://kg.ebrains.eu/vocab/meta/occurrences"],
-            properties: [],
+            properties: simplifyPropertiesSemeantics(rawtype["https://kg.ebrains.eu/vocab/meta/properties"]),
             spaces: []
         };
-        if (rawtype["https://kg.ebrains.eu/vocab/meta/properties"]) {
-            type.properties = rawtype["https://kg.ebrains.eu/vocab/meta/properties"].map(property => ({
-                id: property["http://schema.org/identifier"],
-                name: property["http://schema.org/name"],
-                occurrences: property["https://kg.ebrains.eu/vocab/meta/occurrences"],
-                targetTypes: property["https://kg.ebrains.eu/vocab/meta/targetTypes"].map(targetType => ({
-                    id: targetType["http://schema.org/name"],
-                    occurrences: targetType["https://kg.ebrains.eu/vocab/meta/occurrences"]
-                }))
-            }));
-        }
-        if (rawtype["https://kg.ebrains.eu/vocab/meta/spaces"]) {
+        if (Array.isArray(rawtype["https://kg.ebrains.eu/vocab/meta/spaces"])) {
             type.spaces = rawtype["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
-                name: space["http://schema.org/name"],
-                occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
+                name: space["https://kg.ebrains.eu/vocab/meta/space"],
+                occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"],
+                properties: simplifyPropertiesSemeantics(space["https://kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
         return type;
