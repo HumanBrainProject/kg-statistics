@@ -17,11 +17,11 @@
 (function () {
     let types = {};
     let typesList = [];
-    let typesGraphData = {
+    let globalGraphData = {
         nodes: [],
         links: []
     };
-    let linksGraphData = {
+    let typeGraphData = {
         nodes: [],
         links: []
     };
@@ -124,6 +124,7 @@
                     property.excludeLinks = true;
                 }
                 property.targetTypes.forEach(targetType => {
+                    targetType.provenance = provenance;
                     const target = types[targetType.id];
                     if (target) {
                         targetType.name = target.name;
@@ -150,6 +151,7 @@
                             }
                         }
                         acc[targetType.id].occurrences += targetType.occurrences;
+                        acc[targetType.id].provenance = provenance && acc[targetType.id].provenance;
                     }
                 });
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
@@ -170,6 +172,7 @@
                         property.excludeLinks = true;
                     }
                     property.targetTypes.forEach(targetType => {
+                        targetType.provenance = provenance;
                         const target = types[targetType.id];
                         if (target) {
                             targetType.name = target.name;
@@ -239,7 +242,7 @@
                 }
             });
         };
-    
+
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
             if (excludedTypes.includes(type.id)) {
@@ -281,7 +284,7 @@
     };
 
 
-    const buildGraphData = typesList => {
+    const buildGraphData = (typesList, ignoreSelectedNode) => {
 
         const enabledNodes = {};
 
@@ -294,12 +297,14 @@
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        if (!ignoreSelectedNode) {
+            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        }
 
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    if (isNodeEnabled(space.name, type.id)) {
+                    if (ignoreSelectedNode || isNodeEnabled(space.name, type.id)) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -321,7 +326,7 @@
                 .forEach(relation => {
                     if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
                         const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
-                        if (targetNode && !targetNode.isExcluded && (selectedType || sourceNode.group !== targetNode.group)) {
+                        if (targetNode && !targetNode.isExcluded && (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             acc.push({
                                 occurrences: relation.occurrences,
                                 source: sourceNode,
@@ -341,18 +346,18 @@
     };
 
 
-    const buildLinksGraphData = () => {
+    const buildTypeGraphData = () => {
 
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
         const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
-        linksGraphData = buildGraphData(typesList);
+        typeGraphData = buildGraphData(typesList, false);
     }
 
-    const buildTypesGraphData = () => {
-        typesGraphData = buildGraphData(typesList);
+    const buildGlobalGraphData = () => {
+        globalGraphData = buildGraphData(typesList, true);
     };
 
     const search = query => {
@@ -404,7 +409,7 @@
                     selectedType = undefined;
                     buildTypes(data);
                     search();
-                    buildTypesGraphData();
+                    buildGlobalGraphData();
                     structureStore.toggleState("STRUCTURE_LOADED", true);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
                     structureStore.notifyChange();
@@ -425,7 +430,7 @@
                 search();
                 highlightedType = undefined;
                 selectedType = type;
-                buildLinksGraphData();
+                buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
                 structureStore.toggleState("SHOW_SEARCH_PANEL", false);
@@ -479,7 +484,7 @@
 
     structureStore.addInterface("getHighlightedType", () => highlightedType);
 
-    structureStore.addInterface("getGraphData", () => selectedType?linksGraphData:typesGraphData);
+    structureStore.addInterface("getGraphData", () => selectedType?typeGraphData:globalGraphData);
 
     RiotPolice.registerStore(structureStore);
 })();

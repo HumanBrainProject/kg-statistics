@@ -36459,11 +36459,11 @@ class RiotStore {
 (function () {
     let types = {};
     let typesList = [];
-    let typesGraphData = {
+    let globalGraphData = {
         nodes: [],
         links: []
     };
-    let linksGraphData = {
+    let typeGraphData = {
         nodes: [],
         links: []
     };
@@ -36566,6 +36566,7 @@ class RiotStore {
                     property.excludeLinks = true;
                 }
                 property.targetTypes.forEach(targetType => {
+                    targetType.provenance = provenance;
                     const target = types[targetType.id];
                     if (target) {
                         targetType.name = target.name;
@@ -36592,6 +36593,7 @@ class RiotStore {
                             }
                         }
                         acc[targetType.id].occurrences += targetType.occurrences;
+                        acc[targetType.id].provenance = provenance && acc[targetType.id].provenance;
                     }
                 });
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
@@ -36612,6 +36614,7 @@ class RiotStore {
                         property.excludeLinks = true;
                     }
                     property.targetTypes.forEach(targetType => {
+                        targetType.provenance = provenance;
                         const target = types[targetType.id];
                         if (target) {
                             targetType.name = target.name;
@@ -36681,7 +36684,7 @@ class RiotStore {
                 }
             });
         };
-    
+
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
             if (excludedTypes.includes(type.id)) {
@@ -36723,7 +36726,7 @@ class RiotStore {
     };
 
 
-    const buildGraphData = typesList => {
+    const buildGraphData = (typesList, ignoreSelectedNode) => {
 
         const enabledNodes = {};
 
@@ -36736,12 +36739,14 @@ class RiotStore {
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        if (!ignoreSelectedNode) {
+            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        }
 
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    if (isNodeEnabled(space.name, type.id)) {
+                    if (ignoreSelectedNode || isNodeEnabled(space.name, type.id)) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -36763,7 +36768,7 @@ class RiotStore {
                 .forEach(relation => {
                     if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
                         const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
-                        if (targetNode && !targetNode.isExcluded && (selectedType || sourceNode.group !== targetNode.group)) {
+                        if (targetNode && !targetNode.isExcluded && (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             acc.push({
                                 occurrences: relation.occurrences,
                                 source: sourceNode,
@@ -36783,18 +36788,18 @@ class RiotStore {
     };
 
 
-    const buildLinksGraphData = () => {
+    const buildTypeGraphData = () => {
 
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
         const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
-        linksGraphData = buildGraphData(typesList);
+        typeGraphData = buildGraphData(typesList, false);
     }
 
-    const buildTypesGraphData = () => {
-        typesGraphData = buildGraphData(typesList);
+    const buildGlobalGraphData = () => {
+        globalGraphData = buildGraphData(typesList, true);
     };
 
     const search = query => {
@@ -36846,7 +36851,7 @@ class RiotStore {
                     selectedType = undefined;
                     buildTypes(data);
                     search();
-                    buildTypesGraphData();
+                    buildGlobalGraphData();
                     structureStore.toggleState("STRUCTURE_LOADED", true);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
                     structureStore.notifyChange();
@@ -36867,7 +36872,7 @@ class RiotStore {
                 search();
                 highlightedType = undefined;
                 selectedType = type;
-                buildLinksGraphData();
+                buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
                 structureStore.toggleState("SHOW_SEARCH_PANEL", false);
@@ -36921,7 +36926,7 @@ class RiotStore {
 
     structureStore.addInterface("getHighlightedType", () => highlightedType);
 
-    structureStore.addInterface("getGraphData", () => selectedType?linksGraphData:typesGraphData);
+    structureStore.addInterface("getGraphData", () => selectedType?typeGraphData:globalGraphData);
 
     RiotPolice.registerStore(structureStore);
 })();
@@ -37623,7 +37628,7 @@ riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"
         };
 });
 
-riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> </div> <div class="title">{selectedType.name}</div> <div class="id">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="spaces" if="{selectedType.spaces.length}">Spaces: <ul> <li each="{space in selectedType.spaces}"> <i class="fa fa-cloud"></i>{space.name}<span class="occurrences">{space.occurrences}</span> </li> </ul> </div> <div class="spaces warning" if="{!selectedType.spaces.length}"><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div> <div class="properties">Properties: <div class="noproperties" if="{!selectedType.properties.length}"> type {selectedType.id} does not have any property. </div> <ul if="{selectedType.properties.length}"> <li each="{property in selectedType.properties}" title="{property.id}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}" title="{targetType.id}"> <span if="{property.excludeLinks}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗links are not available in the graph for property ⁗ + property.name}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && targetType.isExcluded}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + targetType.id + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{targetType.id + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{targetType.name}</span> <span if="{!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightTarget}" onmouseout="{unhighlightTarget}" onclick="{selectTarget}" title="{targetType.id}">{targetType.name}</a></span> </li> </ul> </div> </li> </ul> </div> <div class="relations">Links To: <div class="norelations" if="{!selectedType.linksTo.length}"> type {selectedType.id} is not linking to any type. </div> <ul class="links" if="{selectedType.linksTo.length}"> <li each="{linkTo in selectedType.linksTo}" title="{linkTo.targetId}"> <span if="{linkTo.isUnknown}" title="{linkTo.targetId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkTo.targetName}</span> <span if="{!linkTo.isUnknown && linkTo.isExcluded}" class="{linkTo.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkTo.targetId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkTo.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span> <span if="{!linkTo.isUnknown && !linkTo.isExcluded}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightLinkTo}" onmouseout="{unhighlightLinkTo}" onclick="{selectLinkTo}" title="{linkTo.targetId}">{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span> </li> </ul> </div> <div class="relations">Links From: <div class="norelations" if="{!selectedType.linksFrom.length}"> type {selectedType.id} is not linked by any type. </div> <ul class="links" if="{selectedType.linksFrom.length}"> <li each="{linkFrom in selectedType.linksFrom}" title="{linkFrom.sourceId}"> <span if="{linkFrom.isUnknown}" title="{linkFrom.sourceId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span> <span if="{!linkFrom.isUnknown && linkFrom.isExcluded}" class="{linkFrom.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkFrom.sourceId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkFrom.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span> <span if="{!linkFrom.isUnknown && !linkFrom.isExcluded}"><i class="fa fa-long-arrow-left"></i><a href="#" onmouseover="{highlightLinkFrom}" onmouseout="{unhighlightLinkFrom}" onclick="{selectLinkFrom}" title="{linkFrom.sourceId}">{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span> </li> </ul> </div> </div> <div class="no-selection" if="{!selectedType}"> <p>Select a type on the graph or on the search panel to display its properties</p> <p>When no type is selected only links between types belonging to differents spaces are displayed</p> </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .no-selection,[data-is="kg-sidebar"] .no-selection{ margin: 35px 10px; } kg-sidebar .no-selection p,[data-is="kg-sidebar"] .no-selection p{ margin: 0; } kg-sidebar .no-selection p + p,[data-is="kg-sidebar"] .no-selection p + p{ margin-top: 20px; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; margin: 10px 0 12px 0; } kg-sidebar .id,[data-is="kg-sidebar"] .id{ font-size:0.6em; line-height: 1em; margin-bottom:12px; word-break: break-word; } kg-sidebar .spaces,[data-is="kg-sidebar"] .spaces{ margin-bottom:6px; } kg-sidebar .warning,[data-is="kg-sidebar"] .warning{ color: red; } kg-sidebar .spaces ul,[data-is="kg-sidebar"] .spaces ul{ list-style-type: none; margin: 6px 0 12px 0; padding-left: 5px; } kg-sidebar .spaces ul li,[data-is="kg-sidebar"] .spaces ul li{ margin-right: 3px; } kg-sidebar .spaces ul li i.fa:before,[data-is="kg-sidebar"] .spaces ul li i.fa:before{ margin-right: 5px; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .link-disabled,[data-is="kg-sidebar"] .link-disabled{ text-decoration: line-through; color: #9a9a9a; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar .noproperties,[data-is="kg-sidebar"] .noproperties{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li .broken-link,[data-is="kg-sidebar"] ul.links > li .broken-link{ color: red; } kg-sidebar ul.links > li .broken-link .link-disabled,[data-is="kg-sidebar"] ul.links > li .broken-link .link-disabled{ color: red; } kg-sidebar ul.links > li > span > i.fa:before,[data-is="kg-sidebar"] ul.links > li > span > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .properties > ul > li,[data-is="kg-sidebar"] .properties > ul > li{ margin-bottom: 4px; padding: 3px 3px; background: #222; }', '', function(opts) {
+riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> </div> <div class="title">{selectedType.name}</div> <div class="id">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="spaces" if="{selectedType.spaces.length}">Spaces: <ul> <li each="{space in selectedType.spaces}"> <i class="fa fa-cloud"></i>{space.name}<span class="occurrences">{space.occurrences}</span> </li> </ul> </div> <div class="spaces warning" if="{!selectedType.spaces.length}"><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div> <div class="properties">Properties: <div class="noproperties" if="{!selectedType.properties.length}"> type {selectedType.id} does not have any property. </div> <ul if="{selectedType.properties.length}"> <li each="{property in selectedType.properties}" title="{property.id}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}" title="{targetType.id}"> <span if="{property.excludeLinks}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗links are not available in the graph for property ⁗ + property.name}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && targetType.isExcluded}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + targetType.id + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{targetType.id + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{targetType.name}</span> <span if="{!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}"><i class="{⁗fa ⁗ + (targetType.provenance?⁗fa-flag⁗:⁗fa-long-arrow-right⁗)}"></i><a href="#" onmouseover="{highlightTarget}" onmouseout="{unhighlightTarget}" onclick="{selectTarget}" title="{targetType.id}">{targetType.name}</a></span> </li> </ul> </div> </li> </ul> </div> <div class="relations">Links To: <div class="norelations" if="{!selectedType.linksTo.length}"> type {selectedType.id} is not linking to any type. </div> <ul class="links" if="{selectedType.linksTo.length}"> <li each="{linkTo in selectedType.linksTo}" title="{linkTo.targetId}"> <span if="{linkTo.isUnknown}" title="{linkTo.targetId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkTo.targetName}</span> <span if="{!linkTo.isUnknown && linkTo.isExcluded}" class="{linkTo.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkTo.targetId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkTo.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span> <span if="{!linkTo.isUnknown && !linkTo.isExcluded}"><i class="{⁗fa ⁗ + (linkTo.provenance?⁗fa-flag⁗:⁗fa-long-arrow-right⁗)}"></i><a href="#" onmouseover="{highlightLinkTo}" onmouseout="{unhighlightLinkTo}" onclick="{selectLinkTo}" title="{linkTo.targetId}">{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span> </li> </ul> </div> <div class="relations">Links From: <div class="norelations" if="{!selectedType.linksFrom.length}"> type {selectedType.id} is not linked by any type. </div> <ul class="links" if="{selectedType.linksFrom.length}"> <li each="{linkFrom in selectedType.linksFrom}" title="{linkFrom.sourceId}"> <span if="{linkFrom.isUnknown}" title="{linkFrom.sourceId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span> <span if="{!linkFrom.isUnknown && linkFrom.isExcluded}" class="{linkFrom.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkFrom.sourceId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkFrom.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span> <span if="{!linkFrom.isUnknown && !linkFrom.isExcluded}"><i class="{⁗fa ⁗ + (linkFrom.provenance?⁗fa-flag⁗:⁗fa-long-arrow-left⁗)}"></i><a href="#" onmouseover="{highlightLinkFrom}" onmouseout="{unhighlightLinkFrom}" onclick="{selectLinkFrom}" title="{linkFrom.sourceId}">{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span> </li> </ul> </div> </div> <div class="no-selection" if="{!selectedType}"> <p>Select a type on the graph or on the search panel to display its properties</p> <p>When no type is selected only links between types belonging to differents spaces are displayed</p> </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .no-selection,[data-is="kg-sidebar"] .no-selection{ margin: 35px 10px; } kg-sidebar .no-selection p,[data-is="kg-sidebar"] .no-selection p{ margin: 0; } kg-sidebar .no-selection p + p,[data-is="kg-sidebar"] .no-selection p + p{ margin-top: 20px; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; margin: 10px 0 12px 0; } kg-sidebar .id,[data-is="kg-sidebar"] .id{ font-size:0.6em; line-height: 1em; margin-bottom:12px; word-break: break-word; } kg-sidebar .spaces,[data-is="kg-sidebar"] .spaces{ margin-bottom:6px; } kg-sidebar .warning,[data-is="kg-sidebar"] .warning{ color: red; } kg-sidebar .spaces ul,[data-is="kg-sidebar"] .spaces ul{ list-style-type: none; margin: 6px 0 12px 0; padding-left: 5px; } kg-sidebar .spaces ul li,[data-is="kg-sidebar"] .spaces ul li{ margin-right: 3px; } kg-sidebar .spaces ul li i.fa:before,[data-is="kg-sidebar"] .spaces ul li i.fa:before{ margin-right: 5px; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .link-disabled,[data-is="kg-sidebar"] .link-disabled{ text-decoration: line-through; color: #9a9a9a; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar .noproperties,[data-is="kg-sidebar"] .noproperties{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li .broken-link,[data-is="kg-sidebar"] ul.links > li .broken-link{ color: red; } kg-sidebar ul.links > li .broken-link .link-disabled,[data-is="kg-sidebar"] ul.links > li .broken-link .link-disabled{ color: red; } kg-sidebar ul.links > li > span > i.fa:before,[data-is="kg-sidebar"] ul.links > li > span > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .properties > ul > li,[data-is="kg-sidebar"] .properties > ul > li{ margin-bottom: 4px; padding: 3px 3px; background: #222; }', '', function(opts) {
         this.selectedType = false;
 
         this.on("mount", () => {
