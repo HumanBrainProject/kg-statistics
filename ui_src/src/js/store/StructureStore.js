@@ -281,27 +281,25 @@
     };
 
 
-    const buildGraphData = (typesList, withLinks) => {
+    const buildGraphData = typesList => {
 
-        const relations = {};
+        const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
             if (selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) {
-                relations[sourceSpace + "/" + sourceId] =  true;
-                relations[targetSpace + "/" + targetId] =  true;
+                enabledNodes[sourceSpace + "/" + sourceId] =  true;
+                enabledNodes[targetSpace + "/" + targetId] =  true;
             }
         }
 
-        const hasRelation = (space, id) => !selectedType || selectedType.id === id || !!relations[space + "/" + id];
+        const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        if (selectedType) {
-            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
-        }
+        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
 
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    if (hasRelation(space.name, type.id)) {
+                    if (isNodeEnabled(space.name, type.id)) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -317,28 +315,24 @@
             return acc;
         }, {});
 
-        let links = [];
-
-        if (withLinks) {
-            links = Object.values(nodes).reduce((acc, sourceNode) => {
-                const type = sourceNode.type;
-                type.spacesLinksTo
-                    .forEach(relation => {
-                        if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
-                            const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
-                            if (targetNode && !targetNode.isExcluded) {
-                                acc.push({
-                                    occurrences: relation.occurrences,
-                                    source: sourceNode,
-                                    target: targetNode,
-                                    provenance: relation.provenance
-                                });
-                            }
+        const links = Object.values(nodes).reduce((acc, sourceNode) => {
+            const type = sourceNode.type;
+            type.spacesLinksTo
+                .forEach(relation => {
+                    if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
+                        const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
+                        if (targetNode && !targetNode.isExcluded && (selectedType || sourceNode.group !== targetNode.group)) {
+                            acc.push({
+                                occurrences: relation.occurrences,
+                                source: sourceNode,
+                                target: targetNode,
+                                provenance: relation.provenance
+                            });
                         }
-                    });
-                return acc;
-            }, []);
-        }
+                    }
+                });
+            return acc;
+        }, []);
 
         return {
             nodes: Object.values(nodes),
@@ -348,23 +342,17 @@
 
 
     const buildLinksGraphData = () => {
+
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
-        /*
-        const nextLinkedToTypes = directLinkedToTypes.reduce((acc, type) => {
-            acc.push(...getLinkedToTypes(type));
-            return acc;
-        }, []);
-        */
-        
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);//, ...nextLinkedToTypes]);
+        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
-        linksGraphData = buildGraphData(typesList, true);
+        linksGraphData = buildGraphData(typesList);
     }
 
     const buildTypesGraphData = () => {
-        typesGraphData = buildGraphData(typesList, false);
+        typesGraphData = buildGraphData(typesList);
     };
 
     const search = query => {

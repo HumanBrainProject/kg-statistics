@@ -24,8 +24,15 @@
         }
 
         .no-selection {
-            text-align: center;
-            margin: 35px 0;
+            margin: 35px 10px;
+        }
+
+        .no-selection p {
+            margin: 0;
+        }
+
+        .no-selection p + p {
+            margin-top: 20px;
         }
 
         .title{
@@ -266,7 +273,8 @@
         </div>
     </div>
     <div class="no-selection" if={!selectedType}>
-        Select a type on the graph or on the search panel to display its properties
+        <p>Select a type on the graph or on the search panel to display its properties</p>
+        <p>When no type is selected only links between types belonging to differents spaces are displayed</p>
     </div>
 
     <script>

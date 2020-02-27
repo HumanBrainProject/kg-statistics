@@ -481,19 +481,19 @@
                     .on('drag', group_dragged)
                     .on('end', groupDragEnded)
                 ).on("mouseover", d => {
-                    if (self.selectedType) {
+                    //if (self.selectedType) {
                         self.view
                             .selectAll(".node:not(.related-to-group_" + d.key + "), .link-node:not(.related-to-group_" + d.key + "), .link-line:not(.related-to-group_" + d.key + ")")
                             .classed("dephased", true);
-                    }
+                    //}
                     self.info = d.key;
                     self.details = "";
                     self.update()
                 })
                 .on("mouseout", d => {
-                    if (self.selectedType) {
+                    //if (self.selectedType) {
                         self.view.selectAll(".dephased").classed("dephased", false);
-                    }
+                    //}
                     self.info = "";
                     self.details = "";
                     self.update()
