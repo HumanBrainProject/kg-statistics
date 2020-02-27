@@ -184,9 +184,10 @@
                             targetType.spaces.forEach(spaceTo => {
                                 const link = {
                                     occurrences: spaceTo.occurrences,
-                                    //sourceSpace: spaceFrom.name,
+                                    sourceSpace: spaceFrom.name,
                                     targetSpace: spaceTo.name,
                                     targetId: targetType.id,
+                                    targetHash: targetType.hash,
                                     targetName: targetType.name,
                                     provenance: provenance
                                 };
@@ -254,15 +255,17 @@
     };
 
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
-        if (types[linkTo.targetId]) {
-            acc.push(types[linkTo.targetId]);
+        const target = types[linkTo.targetId];
+        if (target && !target.isExcluded) {
+            acc.push(target);
         }
         return acc;
     }, []);
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
-        if (types[linkFrom.sourceId]) {
-            acc.push(types[linkFrom.sourceId]);
+        const source = types[linkFrom.sourceId];
+        if (source && !source.isExcluded) {
+            acc.push(source);
         }
         return acc;
     }, []);
@@ -280,19 +283,35 @@
 
     const buildGraphData = (typesList, withLinks) => {
 
+        const relations = {};
+
+        const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
+            if (selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) {
+                relations[sourceSpace + "/" + sourceId] =  true;
+                relations[targetSpace + "/" + targetId] =  true;
+            }
+        }
+
+        const hasRelation = (space, id) => !selectedType || selectedType.id === id || !!relations[space + "/" + id];
+
+        if (selectedType) {
+            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        }
+
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    acc[space.name + "/" + type.id] = {
-                        hash: hashCode(space.name + "/" + type.id),
-                        id: type.id,
-                        name: type.name,
-                        occurrences: space.occurrences,
-                        group: space.name,
-                        type: type,
-                        linksTo: [],
-                        linksFrom: []
-                    };
+                    if (hasRelation(space.name, type.id)) {
+                        acc[space.name + "/" + type.id] = {
+                            hash: hashCode(space.name + "/" + type.id),
+                            id: type.id,
+                            name: type.name,
+                            occurrences: space.occurrences,
+                            group: space.name,
+                            type: type,
+                            linksTo: []
+                        };
+                    }
                 });
             }
             return acc;
@@ -307,7 +326,7 @@
                     .forEach(relation => {
                         if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
                             const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
-                            if (targetNode) {
+                            if (targetNode && !targetNode.isExcluded) {
                                 acc.push({
                                     occurrences: relation.occurrences,
                                     source: sourceNode,

@@ -36626,9 +36626,10 @@ class RiotStore {
                             targetType.spaces.forEach(spaceTo => {
                                 const link = {
                                     occurrences: spaceTo.occurrences,
-                                    //sourceSpace: spaceFrom.name,
+                                    sourceSpace: spaceFrom.name,
                                     targetSpace: spaceTo.name,
                                     targetId: targetType.id,
+                                    targetHash: targetType.hash,
                                     targetName: targetType.name,
                                     provenance: provenance
                                 };
@@ -36696,15 +36697,17 @@ class RiotStore {
     };
 
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
-        if (types[linkTo.targetId]) {
-            acc.push(types[linkTo.targetId]);
+        const target = types[linkTo.targetId];
+        if (target && !target.isExcluded) {
+            acc.push(target);
         }
         return acc;
     }, []);
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
-        if (types[linkFrom.sourceId]) {
-            acc.push(types[linkFrom.sourceId]);
+        const source = types[linkFrom.sourceId];
+        if (source && !source.isExcluded) {
+            acc.push(source);
         }
         return acc;
     }, []);
@@ -36722,19 +36725,35 @@ class RiotStore {
 
     const buildGraphData = (typesList, withLinks) => {
 
+        const relations = {};
+
+        const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
+            if (selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) {
+                relations[sourceSpace + "/" + sourceId] =  true;
+                relations[targetSpace + "/" + targetId] =  true;
+            }
+        }
+
+        const hasRelation = (space, id) => !selectedType || selectedType.id === id || !!relations[space + "/" + id];
+
+        if (selectedType) {
+            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        }
+
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    acc[space.name + "/" + type.id] = {
-                        hash: hashCode(space.name + "/" + type.id),
-                        id: type.id,
-                        name: type.name,
-                        occurrences: space.occurrences,
-                        group: space.name,
-                        type: type,
-                        linksTo: [],
-                        linksFrom: []
-                    };
+                    if (hasRelation(space.name, type.id)) {
+                        acc[space.name + "/" + type.id] = {
+                            hash: hashCode(space.name + "/" + type.id),
+                            id: type.id,
+                            name: type.name,
+                            occurrences: space.occurrences,
+                            group: space.name,
+                            type: type,
+                            linksTo: []
+                        };
+                    }
                 });
             }
             return acc;
@@ -36749,7 +36768,7 @@ class RiotStore {
                     .forEach(relation => {
                         if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
                             const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
-                            if (targetNode) {
+                            if (targetNode && !targetNode.isExcluded) {
                                 acc.push({
                                     occurrences: relation.occurrences,
                                     source: sourceNode,
@@ -37189,11 +37208,19 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     .on('drag', group_dragged)
                     .on('end', groupDragEnded)
                 ).on("mouseover", d => {
+                    if (self.selectedType) {
+                        self.view
+                            .selectAll(".node:not(.related-to-group_" + d.key + "), .link-node:not(.related-to-group_" + d.key + "), .link-line:not(.related-to-group_" + d.key + ")")
+                            .classed("dephased", true);
+                    }
                     self.info = d.key;
                     self.details = "";
                     self.update()
                 })
                 .on("mouseout", d => {
+                    if (self.selectedType) {
+                        self.view.selectAll(".dephased").classed("dephased", false);
+                    }
                     self.info = "";
                     self.details = "";
                     self.update()
@@ -37225,31 +37252,30 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 .enter().append("line")
                 .attr("class", "link-line")
                 .each(function(d) {
-                    d3.select(this).classed("related-to_" + d.source.hash, true);
-                    d3.select(this).classed("related-to_" + d.target.hash, true);
-                    d3.select(this).classed("related-to-type_" + d.source.type.hash, true);
-                    d3.select(this).classed("related-to-type_" + d.target.type.hash, true);
-                    d3.select(this).classed("provenance", d.provenance)
+                    const $linkLine = d3.select(this);
+
+                    $linkLine.classed("related-to_" + d.source.hash, true);
+                    $linkLine.classed("related-to_" + d.target.hash, true);
+                    $linkLine.classed("related-to-type_" + d.source.type.hash, true);
+                    $linkLine.classed("related-to-type_" + d.target.type.hash, true);
+
+                    $linkLine.classed("provenance", d.provenance)
                 })
                 .attr("stroke-width", d => linkRscale(d.occurrences))
                 .on("mouseover", d => {
-                    if (!self.selectedType) {
-                        if (d.target.group == d.source.group){
-                            self.info = d.source.group;
-                        } else {
-                            self.info = "from " + d.source.group + " to " + d.target.group;
-                        }
+                    self.view
+                        .selectAll(".node:not(.related-to_" + d.source.hash + "), .link-node:not(.related-to_" + d.source.hash + "), .link-line:not(.related-to_" + d.source.hash + "), .node:not(.related-to_" + d.target.hash + "), .link-node:not(.related-to_" + d.target.hash + "), .link-line:not(.related-to_" + d.target.hash + ")")
+                        .classed("dephased", true);
+                    if (d.target.group == d.source.group){
+                        self.info = "in " + d.target.group + " from " + d.source.name + " to " + d.target.name;
                     } else {
-                        if (d.target.group == d.source.group){
-                            self.info = "from " + d.source.name + " to " + d.target.name;
-                        } else {
-                            self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
-                        }
+                        self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
                     }
                     self.details = "";
                     self.update();
                 })
                 .on("mouseout", d => {
+                    self.view.selectAll(".dephased").classed("dephased", false);
                     self.info = "";
                     self.details = "";
                     self.update()
@@ -37261,43 +37287,39 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     .enter().append("g")
                     .attr("class", "link-node")
                     .each(function(d) {
-                        let $this = d3.select(this);
+                        const $linkNode = d3.select(this);
 
-                        $this.append("circle")
+                        $linkNode.append("circle")
                             .attr("class", "link-node__circle")
                             .attr("r", 10)
                             .classed("provenance", d.provenance);
 
-                        $this.append("text")
+                        $linkNode.append("text")
                             .attr("class", "link-node__text")
                             .attr("text-anchor", "middle")
                             .text(d.occurrences);
-                        $this.append("title").text(d.name);
+                        $linkNode.append("title").text(d.name);
 
-                        d3.select(this).classed("related-to_" + d.source.hash, true);
-                        d3.select(this).classed("related-to_" + d.target.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.source.type.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.target.type.hash, true);
+                        $linkNode.classed("related-to_" + d.source.hash, true);
+                        $linkNode.classed("related-to_" + d.target.hash, true);
+                        $linkNode.classed("related-to-type_" + d.source.type.hash, true);
+                        $linkNode.classed("related-to-type_" + d.target.type.hash, true);
 
                     })
                     .on("mouseover", d => {
-                        if (!self.selectedType) {
-                            if (d.target.group == d.source.group){
-                                self.info = d.source.group;
-                            } else {
-                                self.info = d.source.group + " <-> " + d.target.group;
-                            }
+                        self.view
+                            .selectAll(".node:not(.related-to_" + d.source.hash + "), .link-node:not(.related-to_" + d.source.hash + "), .link-line:not(.related-to_" + d.source.hash + "), .node:not(.related-to_" + d.target.hash + "), .link-node:not(.related-to_" + d.target.hash + "), .link-line:not(.related-to_" + d.target.hash + ")")
+                            .classed("dephased", true);
+                        if (d.target.group == d.source.group){
+                            self.info = "in " + d.target.group + " from " + d.source.name + " to " + d.target.name;
                         } else {
-                            if (d.target.group == d.source.group){
-                                self.info = "from " + d.source.name + " to " + d.target.name;
-                            } else {
-                                self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
-                            }
+                            self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
                         }
                         self.details = "";
                         self.update()
                     })
                     .on("mouseout", d => {
+                        self.view.selectAll(".dephased").classed("dephased", false);
                         self.info = "";
                         self.update();
                     })
@@ -37308,29 +37330,32 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     .enter().append("g")
                     .attr("class", "node")
                     .each(function(d) {
-                        let $this = d3.select(this);
-                        $this.append("circle")
+                        const $node = d3.select(this);
+
+                        $node.append("circle")
                             .attr("class", "node__circle")
                             .attr("r", d => nodeRscale(d.occurrences))
                             .append('title').text(d.id);
 
-                        $this.append("text")
+                        $node.append("text")
                             .attr("class", "node__label")
                             .attr("text-anchor", "middle")
                             .text(d.name);
 
-                        $this.append("text")
+                        $node.append("text")
                             .attr("class", "node__occurrences")
                             .attr("text-anchor", "middle")
                             .text(d.occurrences);
 
-                        d3.select(this).classed("is_" + d.hash, true);
-                        d3.select(this).classed("is-type_" + d.type.hash, true);
-                        d3.select(this).classed("related-to_" + d.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.type.hash, true);
-                        d.linksTo.forEach(linkTo => {
-                            d3.select(this).classed("related-to_" + d.hash, true);
-                            d3.select(this).classed("related-to-type_" + d.type.hash, true);
+                        $node.classed("is_" + d.hash, true);
+                        $node.classed("is-type_" + d.type.hash, true);
+                        $node.classed("related-to_" + d.hash, true);
+                        $node.classed("related-to-type_" + d.type.hash, true);
+                        $node.classed("related-to-group_" + d.group, true);
+                        d.type.linksTo.forEach(linkTo => {
+                            $node.classed("related-to_" + d.hash, true);
+                            $node.classed("related-to-type_" + linkTo.targetHash, true);
+                            $node.classed("related-to-group_" + linkTo.group, true);
                         });
 
                     })
@@ -37343,12 +37368,12 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                             self.view
                                 .selectAll(".node:not(.related-to-type_" + d.type.hash + "), .link-node:not(.related-to-type_" + d.type.hash + "), .link-line:not(.related-to-type_" + d.type.hash + ")")
                                 .classed("dephased", true);
-                                self.info = d.group + "/" + d.name;
+                                self.info = d.name;
                         } else {
                             self.view
                                 .selectAll(".node:not(.related-to_" + d.hash + "), .link-node:not(.related-to_" + d.hash + "), .link-line:not(.related-to_" + d.hash + ")")
                                 .classed("dephased", true);
-                                self.info = d.name;
+                                self.info = d.group + "/" + d.name;
                             }
                         self.details = d.id;
                         self.update();
