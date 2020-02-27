@@ -233,7 +233,7 @@
                                 <span if={property.excludeLinks} class={targetType.isUnknown?"broken-link":""} title={"links are not available in the graph for property " + property.name}><i class={"fa " + (targetType.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span>
                                 <span if={!property.excludeLinks && targetType.isExcluded} class={targetType.isUnknown?"broken-link":""} title={"type " + targetType.id + " is not available in the graph"}><i class={"fa " + (targetType.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span>
                                 <span if={!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown} class={targetType.isUnknown?"broken-link":""} title={targetType.id + " is an unknown link"}><i class="fa fa-unlink"></i>{targetType.name}</span>
-                                <span if={!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlighTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a></span>
+                                <span if={!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlightTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a></span>
                             </li>
                         </ul>
                     </div>

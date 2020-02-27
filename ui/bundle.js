@@ -36460,20 +36460,17 @@ class RiotStore {
     let types = {};
     let typesList = [];
     let typesGraphData = {
-        nodesMap: {},
         nodes: [],
         links: []
     };
     let linksGraphData = {
-        nodesMap: {},
         nodes: [],
         links: []
     };
-    let selectedType = null;
-    let lastUpdate = null;
-    let selectedNode;
+    let selectedType = undefined;
+    let lastUpdate = undefined;
     let releasedStage = false;
-    let highlightedNode;
+    let highlightedType;
     let searchQuery = "";
     let searchResults = [];
     
@@ -36528,7 +36525,7 @@ class RiotStore {
                     };
                     if (Array.isArray(targetType["https://kg.ebrains.eu/vocab/meta/spaces"])) {
                         type.spaces = targetType["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
-                            type: space["https://kg.ebrains.eu/vocab/meta/type"],
+                            //type: space["https://kg.ebrains.eu/vocab/meta/type"],
                             name: space["https://kg.ebrains.eu/vocab/meta/space"],
                             occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
                         }));
@@ -36552,6 +36549,7 @@ class RiotStore {
                 properties: simplifyPropertiesSemeantics(space["https://kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
+        type.hash = hashCode(type.id);
         return type;
     };
 
@@ -36599,14 +36597,62 @@ class RiotStore {
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
                 return acc;
             }, {});
-            type.linksTo = Object.values(linksTo).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
-        }
+            return Object.values(linksTo).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
+        };
+    
+        const enrichTypeSpacesLinksTo = type => {
+            const links = [];
+            type.spaces.forEach(spaceFrom => {
+                if (excludedProperties.length) {
+                    spaceFrom.properties = spaceFrom.properties.filter(property => !excludedProperties.includes(property.name));
+                }
+                spaceFrom.properties.forEach(property => {
+                    const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                    if (excludedPropertiesForLinks.includes(property.name)) {
+                        property.excludeLinks = true;
+                    }
+                    property.targetTypes.forEach(targetType => {
+                        const target = types[targetType.id];
+                        if (target) {
+                            targetType.name = target.name;
+                        } else {
+                            targetType.name = targetType.id;
+                            targetType.isUnknown = true;
+                        }
+                        if (excludedTypes.includes(targetType.id)) {
+                            targetType.isExcluded = true;
+                        }
+                        if (!property.excludeLinks) {
+                            targetType.spaces.forEach(spaceTo => {
+                                const link = {
+                                    occurrences: spaceTo.occurrences,
+                                    //sourceSpace: spaceFrom.name,
+                                    targetSpace: spaceTo.name,
+                                    targetId: targetType.id,
+                                    targetName: targetType.name,
+                                    provenance: provenance
+                                };
+                                if (targetType.isExcluded) {
+                                    link.isExcluded = true;
+                                }
+                                if (targetType.isUnknown) {
+                                    link.isUnknown = true;
+                                }
+                                links.push(link);
+                            });
+                        }
+                    });
+                });
+            });
+            return links;
+        };
     
         const enrichTypesLinks = () => {
     
             const linksFrom = {};
             typesList.forEach(type => {
-                enrichTypeLinksTo(type);
+                type.linksTo = enrichTypeLinksTo(type);
+
                 type.linksFrom = [];
                 type.linksTo.forEach(linkTo => {
                     if (!linksFrom[linkTo.targetId]) {
@@ -36624,6 +36670,8 @@ class RiotStore {
                     }
                     linksFrom[linkTo.targetId][type.id].occurrences += linkTo.occurrences;
                 });
+
+                type.spacesLinksTo = enrichTypeSpacesLinksTo(type);
             });
             Object.entries(linksFrom).forEach(([target, sources]) => {
                 const type = types[target];
@@ -36671,6 +36719,57 @@ class RiotStore {
         return Object.values(uniqueTypes);
     };
 
+
+    const buildGraphData = (typesList, withLinks) => {
+
+        const nodes = typesList.reduce((acc, type) => {
+            if (!excludedTypes.includes(type.id)) {
+                type.spaces.forEach(space => {
+                    acc[space.name + "/" + type.id] = {
+                        hash: hashCode(space.name + "/" + type.id),
+                        id: type.id,
+                        name: type.name,
+                        occurrences: space.occurrences,
+                        group: space.name,
+                        type: type,
+                        linksTo: [],
+                        linksFrom: []
+                    };
+                });
+            }
+            return acc;
+        }, {});
+
+        let links = [];
+
+        if (withLinks) {
+            links = Object.values(nodes).reduce((acc, sourceNode) => {
+                const type = sourceNode.type;
+                type.spacesLinksTo
+                    .forEach(relation => {
+                        if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
+                            const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
+                            if (targetNode) {
+                                acc.push({
+                                    occurrences: relation.occurrences,
+                                    source: sourceNode,
+                                    target: targetNode,
+                                    provenance: relation.provenance
+                                });
+                            }
+                        }
+                    });
+                return acc;
+            }, []);
+        }
+
+        return {
+            nodes: Object.values(nodes),
+            links: links
+        };
+    };
+
+
     const buildLinksGraphData = () => {
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
@@ -36684,105 +36783,11 @@ class RiotStore {
         
         const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);//, ...nextLinkedToTypes]);
 
-        const nodes = typesList.reduce((acc, type) => {
-            if (!excludedTypes.includes(type.id)) {
-                const hash = hashCode(type.id);
-                acc[type.id] = {
-                    hash: hash,
-                    typeHash: hash,
-                    id: type.id,
-                    name: type.name,
-                    occurrences: type.occurrences,
-                    type: type,
-                    linksTo: [],
-                    linksFrom: []
-                };
-            }
-            return acc
-        }, {});
-
-        typesList.forEach(type => {
-            const node = nodes[type.id];
-            if (node) { // node can be undefined because of excludedTypes
-                node.linksTo = type.linksTo.reduce((acc, relation) => {
-                    if (nodes[relation.targetId]) {
-                        acc.push(nodes[relation.targetId]);
-                    }
-                    return acc;
-                }, []);
-            }
-        });
-
-        const links = typesList.reduce((acc, type) => {
-            const sourceNode = nodes[type.id];
-            if (sourceNode) { // sourceNode can be undefined because of excludedTypes
-                type.linksTo
-                    .forEach(relation => {
-                        if (relation.target !== type.id && !excludedTypes.includes(relation.target)) {
-                            const targetNode = nodes[relation.targetId];
-                            if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
-                                const key = type.id + "-" + relation.targetId;
-                                if (!acc[key]) {
-                                    acc[key] = {
-                                        occurrences: 0,
-                                        source: sourceNode,
-                                        target: targetNode,
-                                        provenance: relation.provenance
-                                    }
-                                }
-                                acc[key].occurrences += relation.occurrences;
-                            }
-                        }
-                    });
-            }
-            return acc;
-        }, {});
-
-        linksGraphData = {
-            nodesMap: nodes,
-            nodes: Object.values(nodes),
-            links: Object.values(links)
-        };
+        linksGraphData = buildGraphData(typesList, true);
     }
 
     const buildTypesGraphData = () => {
-
-        const nodesMap = {};
-        const nodes = typesList.reduce((acc, type) => {
-            if (!excludedTypes.includes(type.id)) {
-                const hash = hashCode(type.id);
-                nodesMap[type.id] = {
-                    hash: hash,
-                    typeHash: hash,
-                    id: type.id,
-                    name: type.name,
-                    occurrences: type.occurrences,
-                    type: type,
-                    linksTo: [],
-                    linksFrom: []
-                };
-                type.spaces.forEach(space => {
-                    acc.push({
-                        hash: hashCode(space.name + "/" + type.id),
-                        typeHash: hashCode(type.id),
-                        id: type.id,
-                        name: type.name,
-                        occurrences: space.occurrences,
-                        group: space.name,
-                        type: type,
-                        linksTo: [],
-                        linksFrom: []
-                    });
-                });
-            }
-            return acc;
-        }, []);
-
-        typesGraphData = {
-            nodesMap: nodesMap,
-            nodes: nodes,
-            links: []
-        };
+        typesGraphData = buildGraphData(typesList, false);
     };
 
     const search = query => {
@@ -36806,7 +36811,7 @@ class RiotStore {
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
-            "NODE_SELECTED", "NODE_HIGHLIGHTED",
+            "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
             "SHOW_SEARCH_PANEL", "STAGE_RELEASED"
         ],
         init, reset);
@@ -36831,7 +36836,7 @@ class RiotStore {
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
-                    selectedType = null;
+                    selectedType = undefined;
                     buildTypes(data);
                     search();
                     buildTypesGraphData();
@@ -36848,70 +36853,36 @@ class RiotStore {
         }
     });
 
-    structureStore.addAction("structure:node_select", node => {
-        if (node) {
-            if (node !== selectedNode) {
-                search();
-                highlightedNode = undefined;
-                selectedType = node.type;
-                buildLinksGraphData();
-                selectedNode = linksGraphData.nodesMap[selectedType.id];
-                selectedNode.x = node.x;
-                selectedNode.y = node.y;
-                structureStore.toggleState("NODE_HIGHLIGHTED", false);
-                structureStore.toggleState("NODE_SELECTED", !!node);
-                structureStore.toggleState("SHOW_SEARCH_PANEL", false);
-            }
-        } else if (selectedNode) {
-            search();
-            highlightedNode = undefined;
-            selectedNode = undefined;
-            selectedType = undefined;
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_SELECTED", false);
-        }
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:node_highlight", node => {
-        highlightedNode = node;
-        structureStore.toggleState("NODE_HIGHLIGHTED", !!node);
-        structureStore.notifyChange();
-    });
-
     structureStore.addAction("structure:type_select", id => {
         const type = types[id];
         if (type) {
             if (type !== selectedType) {
                 search();
-                highlightedNode = undefined;
+                highlightedType = undefined;
                 selectedType = type;
                 buildLinksGraphData();
-                selectedNode = linksGraphData.nodesMap[id];
-                structureStore.toggleState("NODE_HIGHLIGHTED", false);
-                structureStore.toggleState("NODE_SELECTED", !!type);
+                structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+                structureStore.toggleState("TYPE_SELECTED", !!type);
                 structureStore.toggleState("SHOW_SEARCH_PANEL", false);
             }
         } else if (selectedType) {
             search();
-            highlightedNode = undefined;
-            selectedNode = undefined;
+            highlightedType = undefined;
             selectedType = undefined;
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_SELECTED", false);
+            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+            structureStore.toggleState("TYPE_SELECTED", false);
         }
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:type_highlight", id => {
-        if (selectedType) {
-            highlightedNode = linksGraphData.nodesMap[id];
+        const type = types[id];
+        if (type) {
+            highlightedType = type;
         } else {
-            highlightedNode = typesGraphData.nodesMap[id];
+            highlightedType = undefined;
         }
-        structureStore.toggleState("NODE_HIGHLIGHTED", !!highlightedNode);
+        structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
         structureStore.notifyChange();
     });
 
@@ -36941,9 +36912,7 @@ class RiotStore {
 
     structureStore.addInterface("getSearchResults", () => searchResults);
 
-    structureStore.addInterface("getSelectedNode", () => selectedNode);
-
-    structureStore.addInterface("getHighlightedNode", () => highlightedNode);
+    structureStore.addInterface("getHighlightedType", () => highlightedType);
 
     structureStore.addInterface("getGraphData", () => selectedType?linksGraphData:typesGraphData);
 
@@ -36982,8 +36951,8 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
         const maxLinkSize = 40;
         const maxNodeSize = 60;
 
-        this.selectedType = null;
-        this.lastUpdate = null;
+        this.selectedType = undefined;
+        this.lastUpdate = undefined;
         this.simulation;
         this.nodes = [];
         this.links = [];
@@ -37054,43 +37023,43 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 });
             }
 
-            const newSelectedNode = this.stores.structure.getSelectedNode();
-            if (newSelectedNode) {
-                this.selectedNode = newSelectedNode;
+            const newSelectedType = this.stores.structure.getSelectedType();
+            if (newSelectedType) {
+                this.selectedType = newSelectedType;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
-                this.svg.selectAll(".related-to_" + this.selectedNode.hash).classed("selectedRelation", true);
-                this.svg.select(".is_" + this.selectedNode.hash).classed("selectedNode", true);
+                this.svg.selectAll(".related-to-type_" + this.selectedType.hash).classed("selectedRelation", true);
+                this.svg.selectAll(".is-type_" + this.selectedType.hash).classed("selectedNode", true);
             } else {
-                if (this.selectedNode !== undefined) {
+                if (this.selectedType !== undefined) {
                     this.resetView();
                 }
-                this.selectedNode = undefined;
+                this.selectedType = undefined;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            const newHighlightedNode = this.stores.structure.is("NODE_HIGHLIGHTED") && this.stores.structure.getHighlightedNode();
-            if (newHighlightedNode) {
-                this.highlightedNode = newHighlightedNode;
+            const newHighlightedType = this.stores.structure.is("TYPE_HIGHLIGHTED") && this.stores.structure.getHighlightedType();
+            if (newHighlightedType) {
+                this.highlightedType = newHighlightedType;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
-                this.svg.selectAll(".related-to_" + this.highlightedNode.hash).classed("highlightedRelation", true);
-                this.svg.select(".is-type_" + this.highlightedNode.typeHash).classed("highlightedNode", true);
+                this.svg.selectAll(".related-to-type_" + this.highlightedType.hash).classed("highlightedRelation", true);
+                this.svg.selectAll(".is-type_" + this.highlightedType.hash).classed("highlightedNode", true);
             } else {
-                this.highlightedNode = undefined;
+                this.highlightedType = undefined;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
             }
 
             this.svg.selectAll(".searchResult").classed("searchResult", false);
             if (this.stores.structure.is("SHOW_SEARCH_PANEL")) {
-                this.searchResults = this.stores.structure.getSearchResults();
-                this.searchResults.forEach(node => {
-                    this.svg.selectAll(".is-type_" + node.typeHash).classed("searchResult", true);
-                });
-            } else {
-                this.searchResults = [];
+                if (this.stores.structure.getSearchQuery().length) {
+                    const searchResults = this.stores.structure.getSearchResults();
+                    searchResults.forEach(type => {
+                        this.svg.selectAll(".is-type_" + type.hash).classed("searchResult", true);
+                    });
+                }
             }
         });
 
@@ -37179,10 +37148,8 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 .attr("class", "nodes")
 
             var groupIds = [];
-            if (!this.selectedType) {
 
-                groupIds = d3.nest().key(n => n.group ).entries(this.nodes);
-            }
+            groupIds = d3.nest().key(n => n.group ).entries(this.nodes);
 
             self.simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink()
@@ -37199,40 +37166,38 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
-            if (!this.selectedType) {
-                paths = hull.selectAll('.hull')
-                    .data(groupIds, d => d )
-                    .enter()
-                    .append('g')
-                    .attr('class', 'hull')
-                    .append('path')
-                    .style( 'fill-opacity', 0.3)
-                    .style('stroke-width', 3)
-                    .style('stroke', d => self.color(d.key))
-                    .style('fill', d => self.color(d.key))
-                    .style('opacity', 0)
+            paths = hull.selectAll('.hull')
+                .data(groupIds, d => d )
+                .enter()
+                .append('g')
+                .attr('class', 'hull')
+                .append('path')
+                .style( 'fill-opacity', 0.3)
+                .style('stroke-width', 3)
+                .style('stroke', d => self.color(d.key))
+                .style('fill', d => self.color(d.key))
+                .style('opacity', 0)
 
-                paths
-                    .transition()
-                    .duration(2000)
-                    .style('opacity', 1)
+            paths
+                .transition()
+                .duration(2000)
+                .style('opacity', 1)
 
-                hull.selectAll('.hull')
-                    .call(d3.drag()
-                        .on('start', groupDragStarted)
-                        .on('drag', group_dragged)
-                        .on('end', groupDragEnded)
-                    ).on("mouseover", d => {
-                        self.info = d.key;
-                        self.details = "";
-                        self.update()
-                    })
-                    .on("mouseout", d => {
-                        self.info = "";
-                        self.details = "";
-                        self.update()
-                    });
-            }
+            hull.selectAll('.hull')
+                .call(d3.drag()
+                    .on('start', groupDragStarted)
+                    .on('drag', group_dragged)
+                    .on('end', groupDragEnded)
+                ).on("mouseover", d => {
+                    self.info = d.key;
+                    self.details = "";
+                    self.update()
+                })
+                .on("mouseout", d => {
+                    self.info = "";
+                    self.details = "";
+                    self.update()
+                });
 
             restart();
 
@@ -37262,8 +37227,8 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 .each(function(d) {
                     d3.select(this).classed("related-to_" + d.source.hash, true);
                     d3.select(this).classed("related-to_" + d.target.hash, true);
-                    d3.select(this).classed("related-to-type_" + d.source.typeHash, true);
-                    d3.select(this).classed("related-to-type_" + d.target.typeHash, true);
+                    d3.select(this).classed("related-to-type_" + d.source.type.hash, true);
+                    d3.select(this).classed("related-to-type_" + d.target.type.hash, true);
                     d3.select(this).classed("provenance", d.provenance)
                 })
                 .attr("stroke-width", d => linkRscale(d.occurrences))
@@ -37275,7 +37240,11 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                             self.info = "from " + d.source.group + " to " + d.target.group;
                         }
                     } else {
-                        self.info = "from " + d.source.name + " to " + d.target.name;
+                        if (d.target.group == d.source.group){
+                            self.info = "from " + d.source.name + " to " + d.target.name;
+                        } else {
+                            self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
+                        }
                     }
                     self.details = "";
                     self.update();
@@ -37307,8 +37276,8 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
 
                         d3.select(this).classed("related-to_" + d.source.hash, true);
                         d3.select(this).classed("related-to_" + d.target.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.source.typeHash, true);
-                        d3.select(this).classed("related-to-type_" + d.target.typeHash, true);
+                        d3.select(this).classed("related-to-type_" + d.source.type.hash, true);
+                        d3.select(this).classed("related-to-type_" + d.target.type.hash, true);
 
                     })
                     .on("mouseover", d => {
@@ -37319,7 +37288,11 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                                 self.info = d.source.group + " <-> " + d.target.group;
                             }
                         } else {
-                            self.info = "from " + d.source.name + " to " + d.target.name;
+                            if (d.target.group == d.source.group){
+                                self.info = "from " + d.source.name + " to " + d.target.name;
+                            } else {
+                                self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
+                            }
                         }
                         self.details = "";
                         self.update()
@@ -37352,12 +37325,12 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                             .text(d.occurrences);
 
                         d3.select(this).classed("is_" + d.hash, true);
-                        d3.select(this).classed("is-type_" + d.typeHash, true);
+                        d3.select(this).classed("is-type_" + d.type.hash, true);
                         d3.select(this).classed("related-to_" + d.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.typeHash, true);
+                        d3.select(this).classed("related-to-type_" + d.type.hash, true);
                         d.linksTo.forEach(linkTo => {
-                            d3.select(this).classed("related-to_" + linkTo.hash, true);
-                            d3.select(this).classed("related-to-type_" + linkTo.typeHash, true);
+                            d3.select(this).classed("related-to_" + d.hash, true);
+                            d3.select(this).classed("related-to-type_" + d.type.hash, true);
                         });
 
                     })
@@ -37366,14 +37339,17 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                         .on("drag", dragged)
                         .on("end", dragended))
                     .on("mouseover", d => {
-                        self.view
-                            .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
-                            .classed("dephased", true);
                         if (!self.selectedType) {
-                            self.info = d.group + "/" + d.name;
+                            self.view
+                                .selectAll(".node:not(.related-to-type_" + d.type.hash + "), .link-node:not(.related-to-type_" + d.type.hash + "), .link-line:not(.related-to-type_" + d.type.hash + ")")
+                                .classed("dephased", true);
+                                self.info = d.group + "/" + d.name;
                         } else {
-                            self.info = d.name;
-                        }
+                            self.view
+                                .selectAll(".node:not(.related-to_" + d.hash + "), .link-node:not(.related-to_" + d.hash + "), .link-line:not(.related-to_" + d.hash + ")")
+                                .classed("dephased", true);
+                                self.info = d.name;
+                            }
                         self.details = d.id;
                         self.update();
                     })
@@ -37384,7 +37360,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                         self.update();
                     })
                     .on("click", d => {
-                        RiotPolice.trigger("structure:node_select", d);
+                        RiotPolice.trigger("structure:type_select", d.type.id);
                     })
 
                 self.simulation
@@ -37423,50 +37399,45 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 4);
 
-                if (!self.selectedType) {
+                var coordMap = new Map();
+                nodes.each(node => {
+                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
+                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
+                });
 
-                    var coordMap = new Map();
-                    nodes.each(node => {
-                        const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
-                        (coordMap[node.group] = coordMap[node.group] || []).push(coord)
-                    });
+                var centroids = new Map();
 
-                    var centroids = new Map();
+                for (var group in coordMap) {
+                    var groupNodes = coordMap[group];
+                    var n = groupNodes.length;
+                    var cx = 0;
+                    var tx = 0;
+                    var cy = 0;
+                    var ty = 0;
+                    var totalNumOfInstances = 0;
+                    groupNodes.forEach(d => {
+                        tx += d.x;
+                        ty += d.y;
+                        totalNumOfInstances += d.occurrences;
+                    })
 
-                    for (var group in coordMap) {
-                        var groupNodes = coordMap[group];
-                        var n = groupNodes.length;
-                        var cx = 0;
-                        var tx = 0;
-                        var cy = 0;
-                        var ty = 0;
-                        var totalNumOfInstances = 0;
-                        groupNodes.forEach(d => {
-                            tx += d.x;
-                            ty += d.y;
-                            totalNumOfInstances += d.occurrences;
-                        })
+                    cx = tx/n;
+                    cy = ty/n;
 
-                        cx = tx/n;
-                        cy = ty/n;
-
-                        centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;
-                    }
-
-                    var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
-                        .strength(0.3);
-
-                    var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
-                        .strength(0.3);
-
-                    self.simulation
-                        .force("x", forceX)
-                        .force("y", forceY);
+                    centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;
                 }
 
-                if (!self.selectedType) {
-                    updateGroups();
-                }
+                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
+                    .strength(0.3);
+
+                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
+                    .strength(0.3);
+
+                self.simulation
+                    .force("x", forceX)
+                    .force("y", forceY);
+
+                updateGroups();
             }
 
             function dragstarted(d) {
@@ -37639,7 +37610,7 @@ riot.tag2('kg-search-panel', '<button class="open-panel" onclick="{togglePanel}"
         };
 });
 
-riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> </div> <div class="title">{selectedType.name}</div> <div class="id">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="spaces" if="{selectedType.spaces.length}">Spaces: <ul> <li each="{space in selectedType.spaces}"> <i class="fa fa-cloud"></i>{space.name}<span class="occurrences">{space.occurrences}</span> </li> </ul> </div> <div class="spaces warning" if="{!selectedType.spaces.length}"><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div> <div class="properties">Properties: <div class="noproperties" if="{!selectedType.properties.length}"> type {selectedType.id} does not have any property. </div> <ul if="{selectedType.properties.length}"> <li each="{property in selectedType.properties}" title="{property.id}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}" title="{targetType.id}"> <span if="{property.excludeLinks}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗links are not available in the graph for property ⁗ + property.name}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && targetType.isExcluded}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + targetType.id + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{targetType.id + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{targetType.name}</span> <span if="{!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightTarget}" onmouseout="{unhighlighTarget}" onclick="{selectTarget}" title="{targetType.id}">{targetType.name}</a></span> </li> </ul> </div> </li> </ul> </div> <div class="relations">Links To: <div class="norelations" if="{!selectedType.linksTo.length}"> type {selectedType.id} is not linking to any type. </div> <ul class="links" if="{selectedType.linksTo.length}"> <li each="{linkTo in selectedType.linksTo}" title="{linkTo.targetId}"> <span if="{linkTo.isUnknown}" title="{linkTo.targetId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkTo.targetName}</span> <span if="{!linkTo.isUnknown && linkTo.isExcluded}" class="{linkTo.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkTo.targetId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkTo.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span> <span if="{!linkTo.isUnknown && !linkTo.isExcluded}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightLinkTo}" onmouseout="{unhighlightLinkTo}" onclick="{selectLinkTo}" title="{linkTo.targetId}">{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span> </li> </ul> </div> <div class="relations">Links From: <div class="norelations" if="{!selectedType.linksFrom.length}"> type {selectedType.id} is not linked by any type. </div> <ul class="links" if="{selectedType.linksFrom.length}"> <li each="{linkFrom in selectedType.linksFrom}" title="{linkFrom.sourceId}"> <span if="{linkFrom.isUnknown}" title="{linkFrom.sourceId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span> <span if="{!linkFrom.isUnknown && linkFrom.isExcluded}" class="{linkFrom.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkFrom.sourceId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkFrom.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span> <span if="{!linkFrom.isUnknown && !linkFrom.isExcluded}"><i class="fa fa-long-arrow-left"></i><a href="#" onmouseover="{highlightLinkFrom}" onmouseout="{unhighlightLinkFrom}" onclick="{selectLinkFrom}" title="{linkFrom.sourceId}">{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span> </li> </ul> </div> </div> <div class="no-selection" if="{!selectedType}"> Select a type on the graph or on the search panel to display its properties </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .no-selection,[data-is="kg-sidebar"] .no-selection{ text-align: center; margin: 35px 0; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; margin: 10px 0 12px 0; } kg-sidebar .id,[data-is="kg-sidebar"] .id{ font-size:0.6em; line-height: 1em; margin-bottom:12px; word-break: break-word; } kg-sidebar .spaces,[data-is="kg-sidebar"] .spaces{ margin-bottom:6px; } kg-sidebar .warning,[data-is="kg-sidebar"] .warning{ color: red; } kg-sidebar .spaces ul,[data-is="kg-sidebar"] .spaces ul{ list-style-type: none; margin: 6px 0 12px 0; padding-left: 5px; } kg-sidebar .spaces ul li,[data-is="kg-sidebar"] .spaces ul li{ margin-right: 3px; } kg-sidebar .spaces ul li i.fa:before,[data-is="kg-sidebar"] .spaces ul li i.fa:before{ margin-right: 5px; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .link-disabled,[data-is="kg-sidebar"] .link-disabled{ text-decoration: line-through; color: #9a9a9a; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar .noproperties,[data-is="kg-sidebar"] .noproperties{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li .broken-link,[data-is="kg-sidebar"] ul.links > li .broken-link{ color: red; } kg-sidebar ul.links > li .broken-link .link-disabled,[data-is="kg-sidebar"] ul.links > li .broken-link .link-disabled{ color: red; } kg-sidebar ul.links > li > span > i.fa:before,[data-is="kg-sidebar"] ul.links > li > span > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .properties > ul > li,[data-is="kg-sidebar"] .properties > ul > li{ margin-bottom: 4px; padding: 3px 3px; background: #222; }', '', function(opts) {
+riot.tag2('kg-sidebar', '<div if="{selectedType}"> <div class="actions"> <button title="Close this view" class="close" onclick="{close}"><i class="fa fa-close"></i></button> </div> <div class="title">{selectedType.name}</div> <div class="id">{selectedType.id}</div> <div class="instances">Number of instances: <span class="occurrences">{selectedType.occurrences}</span></div> <div class="spaces" if="{selectedType.spaces.length}">Spaces: <ul> <li each="{space in selectedType.spaces}"> <i class="fa fa-cloud"></i>{space.name}<span class="occurrences">{space.occurrences}</span> </li> </ul> </div> <div class="spaces warning" if="{!selectedType.spaces.length}"><i class="fa fa-long-arrow-right"></i> type {selectedType.name} is not associated with any space.</div> <div class="properties">Properties: <div class="noproperties" if="{!selectedType.properties.length}"> type {selectedType.id} does not have any property. </div> <ul if="{selectedType.properties.length}"> <li each="{property in selectedType.properties}" title="{property.id}"> {property.name} <span class="occurrences">{property.occurrences}</span> <div if="{property.targetTypes.length}"> <ul class="links"> <li each="{targetType in property.targetTypes}" title="{targetType.id}"> <span if="{property.excludeLinks}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗links are not available in the graph for property ⁗ + property.name}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && targetType.isExcluded}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + targetType.id + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (targetType.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span> <span if="{!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown}" class="{targetType.isUnknown?⁗broken-link⁗:⁗⁗}" title="{targetType.id + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{targetType.name}</span> <span if="{!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightTarget}" onmouseout="{unhighlightTarget}" onclick="{selectTarget}" title="{targetType.id}">{targetType.name}</a></span> </li> </ul> </div> </li> </ul> </div> <div class="relations">Links To: <div class="norelations" if="{!selectedType.linksTo.length}"> type {selectedType.id} is not linking to any type. </div> <ul class="links" if="{selectedType.linksTo.length}"> <li each="{linkTo in selectedType.linksTo}" title="{linkTo.targetId}"> <span if="{linkTo.isUnknown}" title="{linkTo.targetId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkTo.targetName}</span> <span if="{!linkTo.isUnknown && linkTo.isExcluded}" class="{linkTo.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkTo.targetId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkTo.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span> <span if="{!linkTo.isUnknown && !linkTo.isExcluded}"><i class="fa fa-long-arrow-right"></i><a href="#" onmouseover="{highlightLinkTo}" onmouseout="{unhighlightLinkTo}" onclick="{selectLinkTo}" title="{linkTo.targetId}">{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span> </li> </ul> </div> <div class="relations">Links From: <div class="norelations" if="{!selectedType.linksFrom.length}"> type {selectedType.id} is not linked by any type. </div> <ul class="links" if="{selectedType.linksFrom.length}"> <li each="{linkFrom in selectedType.linksFrom}" title="{linkFrom.sourceId}"> <span if="{linkFrom.isUnknown}" title="{linkFrom.sourceId + ⁗ is an unknown link⁗}"><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span> <span if="{!linkFrom.isUnknown && linkFrom.isExcluded}" class="{linkFrom.isUnknown?⁗broken-link⁗:⁗⁗}" title="{⁗type ⁗ + linkFrom.sourceId + ⁗ is not available in the graph⁗}"><i class="{⁗fa ⁗ + (linkFrom.isUnknown?⁗fa-unlink⁗:⁗fa-ban⁗)}"></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span> <span if="{!linkFrom.isUnknown && !linkFrom.isExcluded}"><i class="fa fa-long-arrow-left"></i><a href="#" onmouseover="{highlightLinkFrom}" onmouseout="{unhighlightLinkFrom}" onclick="{selectLinkFrom}" title="{linkFrom.sourceId}">{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span> </li> </ul> </div> </div> <div class="no-selection" if="{!selectedType}"> Select a type on the graph or on the search panel to display its properties </div>', 'kg-sidebar,[data-is="kg-sidebar"]{ display: block; color:white; padding:10px; overflow-y: auto; } kg-sidebar .no-selection,[data-is="kg-sidebar"] .no-selection{ text-align: center; margin: 35px 0; } kg-sidebar .title,[data-is="kg-sidebar"] .title{ font-size:1.2em; line-height: 1.6em; margin: 10px 0 12px 0; } kg-sidebar .id,[data-is="kg-sidebar"] .id{ font-size:0.6em; line-height: 1em; margin-bottom:12px; word-break: break-word; } kg-sidebar .spaces,[data-is="kg-sidebar"] .spaces{ margin-bottom:6px; } kg-sidebar .warning,[data-is="kg-sidebar"] .warning{ color: red; } kg-sidebar .spaces ul,[data-is="kg-sidebar"] .spaces ul{ list-style-type: none; margin: 6px 0 12px 0; padding-left: 5px; } kg-sidebar .spaces ul li,[data-is="kg-sidebar"] .spaces ul li{ margin-right: 3px; } kg-sidebar .spaces ul li i.fa:before,[data-is="kg-sidebar"] .spaces ul li i.fa:before{ margin-right: 5px; } kg-sidebar .instances,[data-is="kg-sidebar"] .instances{ font-size:0.8em; line-height: 1.2em; margin-bottom:12px; } kg-sidebar .instances button,[data-is="kg-sidebar"] .instances button{ position: absolute; margin: -10px 0 0 8px; padding: 10px 20px; background: #3498db; border: 0; border-radius: 3px; background-color: #3498db; background-image: linear-gradient(to bottom, #3498db, #2980b9); color: #e6e6e6; font-size: 18px; line-height: 20px; text-align: center; text-decoration: none; transition: background-color 0.3s ease-in, background-image 0.3s ease-in, color 0.3s ease-in; cursor: pointer; } kg-sidebar .instances button:hover,[data-is="kg-sidebar"] .instances button:hover{ background-color: #3cb0fd; background-image: linear-gradient(to bottom, #3cb0fd, #3498db); color: #ffffff; text-decoration: none; } kg-sidebar .link-disabled,[data-is="kg-sidebar"] .link-disabled{ text-decoration: line-through; color: #9a9a9a; } kg-sidebar .norelations,[data-is="kg-sidebar"] .norelations{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar .noproperties,[data-is="kg-sidebar"] .noproperties{ margin:12px 12px 16px 12px; font-size:0.8em; word-break: break-word; } kg-sidebar ul,[data-is="kg-sidebar"] ul{ font-size:0.8em; padding-left:18px; } kg-sidebar li,[data-is="kg-sidebar"] li{ padding: 3px 0; line-height:1; position:relative; } kg-sidebar ul ul,[data-is="kg-sidebar"] ul ul{ font-size: 1em; } kg-sidebar ul.links,[data-is="kg-sidebar"] ul.links{ list-style-type: none; padding-left: 5px; } kg-sidebar ul.links > li,[data-is="kg-sidebar"] ul.links > li{ margin-right: 3px; } kg-sidebar ul.links > li .broken-link,[data-is="kg-sidebar"] ul.links > li .broken-link{ color: red; } kg-sidebar ul.links > li .broken-link .link-disabled,[data-is="kg-sidebar"] ul.links > li .broken-link .link-disabled{ color: red; } kg-sidebar ul.links > li > span > i.fa:before,[data-is="kg-sidebar"] ul.links > li > span > i.fa:before{ margin-right: 5px; } kg-sidebar .occurrences,[data-is="kg-sidebar"] .occurrences{ background-color: #444; display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; font-size: 10px; text-align: center; font-weight:bold; line-height:1.2; } kg-sidebar .disabled,[data-is="kg-sidebar"] .disabled{ text-decoration: line-through; color:#aaa; } kg-sidebar .actions,[data-is="kg-sidebar"] .actions{ position:absolute; top:15px; right:15px; } kg-sidebar .actions button,[data-is="kg-sidebar"] .actions button{ display:block; width:40px; height:40px; line-height: 40px; background: #222; appearance: none; -webkit-appearance: none; border: none; outline: none; font-size: 20px; color: #ccc; padding: 0; margin: 0; text-align:center; border-bottom:1px solid #111; } kg-sidebar .actions button:hover,[data-is="kg-sidebar"] .actions button:hover{ background: #333; } kg-sidebar .actions button:first-child,[data-is="kg-sidebar"] .actions button:first-child{ border-top-left-radius: 5px; border-top-right-radius: 5px; } kg-sidebar .actions button:last-child,[data-is="kg-sidebar"] .actions button:last-child{ border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; border-bottom:none; } kg-sidebar .properties > ul > li,[data-is="kg-sidebar"] .properties > ul > li{ margin-bottom: 4px; padding: 3px 3px; background: #222; }', '', function(opts) {
         this.selectedType = false;
 
         this.on("mount", () => {

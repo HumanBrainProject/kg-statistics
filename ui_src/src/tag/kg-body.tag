@@ -235,8 +235,8 @@
         const maxLinkSize = 40;
         const maxNodeSize = 60;
 
-        this.selectedType = null;
-        this.lastUpdate = null;
+        this.selectedType = undefined;
+        this.lastUpdate = undefined;
         this.simulation;
         this.nodes = [];
         this.links = [];
@@ -309,43 +309,43 @@
                 });
             }
 
-            const newSelectedNode = this.stores.structure.getSelectedNode();
-            if (newSelectedNode) {
-                this.selectedNode = newSelectedNode;
+            const newSelectedType = this.stores.structure.getSelectedType();
+            if (newSelectedType) {
+                this.selectedType = newSelectedType;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
-                this.svg.selectAll(".related-to_" + this.selectedNode.hash).classed("selectedRelation", true);
-                this.svg.select(".is_" + this.selectedNode.hash).classed("selectedNode", true);
+                this.svg.selectAll(".related-to-type_" + this.selectedType.hash).classed("selectedRelation", true);
+                this.svg.selectAll(".is-type_" + this.selectedType.hash).classed("selectedNode", true);
             } else {
-                if (this.selectedNode !== undefined) {
+                if (this.selectedType !== undefined) {
                     this.resetView();
                 }
-                this.selectedNode = undefined;
+                this.selectedType = undefined;
                 this.svg.selectAll(".selectedNode").classed("selectedNode", false);
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            const newHighlightedNode = this.stores.structure.is("NODE_HIGHLIGHTED") && this.stores.structure.getHighlightedNode();
-            if (newHighlightedNode) {
-                this.highlightedNode = newHighlightedNode;
+            const newHighlightedType = this.stores.structure.is("TYPE_HIGHLIGHTED") && this.stores.structure.getHighlightedType();
+            if (newHighlightedType) {
+                this.highlightedType = newHighlightedType;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
-                this.svg.selectAll(".related-to_" + this.highlightedNode.hash).classed("highlightedRelation", true);
-                this.svg.select(".is-type_" + this.highlightedNode.typeHash).classed("highlightedNode", true);
+                this.svg.selectAll(".related-to-type_" + this.highlightedType.hash).classed("highlightedRelation", true);
+                this.svg.selectAll(".is-type_" + this.highlightedType.hash).classed("highlightedNode", true);
             } else {
-                this.highlightedNode = undefined;
+                this.highlightedType = undefined;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
             }
 
             this.svg.selectAll(".searchResult").classed("searchResult", false);
             if (this.stores.structure.is("SHOW_SEARCH_PANEL")) {
-                this.searchResults = this.stores.structure.getSearchResults();
-                this.searchResults.forEach(node => {
-                    this.svg.selectAll(".is-type_" + node.typeHash).classed("searchResult", true);
-                });
-            } else {
-                this.searchResults = [];
+                if (this.stores.structure.getSearchQuery().length) {
+                    const searchResults = this.stores.structure.getSearchResults();
+                    searchResults.forEach(type => {
+                        this.svg.selectAll(".is-type_" + type.hash).classed("searchResult", true);
+                    });
+                }
             }
         });
 
@@ -436,11 +436,10 @@
                 .attr("class", "nodes")
 
             var groupIds = [];
-            if (!this.selectedType) {
-                // Grouping nodes by organization
-                groupIds = d3.nest().key(n => n.group ).entries(this.nodes);
-            }
-
+            
+            // Grouping nodes by organization
+            groupIds = d3.nest().key(n => n.group ).entries(this.nodes);
+            
             self.simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink()
                     .id(d => d.id)
@@ -458,41 +457,39 @@
 
 
             // SVG path for hulls
-            if (!this.selectedType) {
-                paths = hull.selectAll('.hull')
-                    .data(groupIds, d => d )
-                    .enter()
-                    .append('g')
-                    .attr('class', 'hull')
-                    .append('path')
-                    .style( 'fill-opacity', 0.3)
-                    .style('stroke-width', 3)
-                    .style('stroke', d => self.color(d.key))
-                    .style('fill', d => self.color(d.key))
-                    .style('opacity', 0)
+            paths = hull.selectAll('.hull')
+                .data(groupIds, d => d )
+                .enter()
+                .append('g')
+                .attr('class', 'hull')
+                .append('path')
+                .style( 'fill-opacity', 0.3)
+                .style('stroke-width', 3)
+                .style('stroke', d => self.color(d.key))
+                .style('fill', d => self.color(d.key))
+                .style('opacity', 0)
 
-                paths
-                    .transition()
-                    .duration(2000)
-                    .style('opacity', 1)
+            paths
+                .transition()
+                .duration(2000)
+                .style('opacity', 1)
 
-                // add interaction to the groups
-                hull.selectAll('.hull')
-                    .call(d3.drag()
-                        .on('start', groupDragStarted)
-                        .on('drag', group_dragged)
-                        .on('end', groupDragEnded)
-                    ).on("mouseover", d => {
-                        self.info = d.key;
-                        self.details = "";
-                        self.update()
-                    })
-                    .on("mouseout", d => {
-                        self.info = "";
-                        self.details = "";
-                        self.update()
-                    });
-            }
+            // add interaction to the groups
+            hull.selectAll('.hull')
+                .call(d3.drag()
+                    .on('start', groupDragStarted)
+                    .on('drag', group_dragged)
+                    .on('end', groupDragEnded)
+                ).on("mouseover", d => {
+                    self.info = d.key;
+                    self.details = "";
+                    self.update()
+                })
+                .on("mouseout", d => {
+                    self.info = "";
+                    self.details = "";
+                    self.update()
+                });
         
             restart();
             
@@ -524,8 +521,8 @@
                 .each(function(d) {
                     d3.select(this).classed("related-to_" + d.source.hash, true);
                     d3.select(this).classed("related-to_" + d.target.hash, true);
-                    d3.select(this).classed("related-to-type_" + d.source.typeHash, true);
-                    d3.select(this).classed("related-to-type_" + d.target.typeHash, true);
+                    d3.select(this).classed("related-to-type_" + d.source.type.hash, true);
+                    d3.select(this).classed("related-to-type_" + d.target.type.hash, true);
                     d3.select(this).classed("provenance", d.provenance)
                 })
                 .attr("stroke-width", d => linkRscale(d.occurrences))
@@ -537,7 +534,11 @@
                             self.info = "from " + d.source.group + " to " + d.target.group;
                         }
                     } else {
-                        self.info = "from " + d.source.name + " to " + d.target.name;
+                        if (d.target.group == d.source.group){
+                            self.info = "from " + d.source.name + " to " + d.target.name;
+                        } else {
+                            self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
+                        }
                     }
                     self.details = "";
                     self.update();
@@ -569,8 +570,8 @@
 
                         d3.select(this).classed("related-to_" + d.source.hash, true);
                         d3.select(this).classed("related-to_" + d.target.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.source.typeHash, true);
-                        d3.select(this).classed("related-to-type_" + d.target.typeHash, true);
+                        d3.select(this).classed("related-to-type_" + d.source.type.hash, true);
+                        d3.select(this).classed("related-to-type_" + d.target.type.hash, true);
 
                     })
                     .on("mouseover", d => {
@@ -581,7 +582,11 @@
                                 self.info = d.source.group + " <-> " + d.target.group;
                             }
                         } else {
-                            self.info = "from " + d.source.name + " to " + d.target.name;
+                            if (d.target.group == d.source.group){
+                                self.info = "from " + d.source.name + " to " + d.target.name;
+                            } else {
+                                self.info = "from " + d.source.group + "/" + d.source.name + " to " + d.target.group+ "/" + d.target.name;
+                            }
                         }
                         self.details = "";
                         self.update()
@@ -615,12 +620,12 @@
                             .text(d.occurrences);
 
                         d3.select(this).classed("is_" + d.hash, true);
-                        d3.select(this).classed("is-type_" + d.typeHash, true);
+                        d3.select(this).classed("is-type_" + d.type.hash, true);
                         d3.select(this).classed("related-to_" + d.hash, true);
-                        d3.select(this).classed("related-to-type_" + d.typeHash, true);
+                        d3.select(this).classed("related-to-type_" + d.type.hash, true);
                         d.linksTo.forEach(linkTo => {
-                            d3.select(this).classed("related-to_" + linkTo.hash, true);
-                            d3.select(this).classed("related-to-type_" + linkTo.typeHash, true);
+                            d3.select(this).classed("related-to_" + d.hash, true);
+                            d3.select(this).classed("related-to-type_" + d.type.hash, true);
                         });
 
                     })
@@ -629,14 +634,17 @@
                         .on("drag", dragged)
                         .on("end", dragended))
                     .on("mouseover", d => {
-                        self.view
-                            .selectAll(".node:not(.related-to-type_" + d.typeHash + "), .link-node:not(.related-to-type_" + d.typeHash + "), .link-line:not(.related-to-type_" + d.typeHash + ")")
-                            .classed("dephased", true);
                         if (!self.selectedType) {
-                            self.info = d.group + "/" + d.name;
+                            self.view
+                                .selectAll(".node:not(.related-to-type_" + d.type.hash + "), .link-node:not(.related-to-type_" + d.type.hash + "), .link-line:not(.related-to-type_" + d.type.hash + ")")
+                                .classed("dephased", true);
+                                self.info = d.group + "/" + d.name;
                         } else {
-                            self.info = d.name;
-                        }
+                            self.view
+                                .selectAll(".node:not(.related-to_" + d.hash + "), .link-node:not(.related-to_" + d.hash + "), .link-line:not(.related-to_" + d.hash + ")")
+                                .classed("dephased", true);
+                                self.info = d.name;
+                            }
                         self.details = d.id;
                         self.update();
                     })
@@ -647,7 +655,7 @@
                         self.update();
                     })
                     .on("click", d => {
-                        RiotPolice.trigger("structure:node_select", d);
+                        RiotPolice.trigger("structure:type_select", d.type.id);
                     })
 
                 //Start force simulation    
@@ -687,55 +695,51 @@
                     .attr("x", d => d.x)
                     .attr("y", d => d.y + 4);
                 
-                if (!self.selectedType) {
-                    //Regrouping nodes by private spaces
-                    var coordMap = new Map();
-                    nodes.each(node => {
-                        const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
-                        (coordMap[node.group] = coordMap[node.group] || []).push(coord)
-                    });
+                //Regrouping nodes by private spaces
+                var coordMap = new Map();
+                nodes.each(node => {
+                    const coord = {x: node.x, y: node.y, occurrences: node.occurrences};
+                    (coordMap[node.group] = coordMap[node.group] || []).push(coord)
+                });
 
-                    // get the centroid of each group:
-                    var centroids = new Map();
+                // get the centroid of each group:
+                var centroids = new Map();
 
-                    for (var group in coordMap) {
-                        var groupNodes = coordMap[group];
-                        var n = groupNodes.length;
-                        var cx = 0;
-                        var tx = 0;
-                        var cy = 0;
-                        var ty = 0;
-                        var totalNumOfInstances = 0;
-                        groupNodes.forEach(d => {
-                            tx += d.x;
-                            ty += d.y;
-                            totalNumOfInstances += d.occurrences;
-                        })
+                for (var group in coordMap) {
+                    var groupNodes = coordMap[group];
+                    var n = groupNodes.length;
+                    var cx = 0;
+                    var tx = 0;
+                    var cy = 0;
+                    var ty = 0;
+                    var totalNumOfInstances = 0;
+                    groupNodes.forEach(d => {
+                        tx += d.x;
+                        ty += d.y;
+                        totalNumOfInstances += d.occurrences;
+                    })
 
-                        cx = tx/n;
-                        cy = ty/n;
+                    cx = tx/n;
+                    cy = ty/n;
 
-                        centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;  
-                    }
-
-                    //Make the x-position equal to the x-position specified in the module positioning object or, if not in
-                    //the hash, then set it to 250
-                    var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
-                        .strength(0.3);
-
-                    //Same for forceY--these act as a gravity parameter so the different strength determines how closely
-                    //the individual nodes are pulled to the center of their module position
-                    var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
-                        .strength(0.3);
-
-                    self.simulation
-                        .force("x", forceX)
-                        .force("y", forceY);
+                    centroids[group] = {x: cx, y: cy, totalNumOfInstances: totalNumOfInstances} ;  
                 }
 
-                if (!self.selectedType) {
-                    updateGroups();
-                }
+                //Make the x-position equal to the x-position specified in the module positioning object or, if not in
+                //the hash, then set it to 250
+                var forceX = d3.forceX(d => centroids[d.group] ? centroids[d.group].x : width / 2)
+                    .strength(0.3);
+
+                //Same for forceY--these act as a gravity parameter so the different strength determines how closely
+                //the individual nodes are pulled to the center of their module position
+                var forceY = d3.forceY(d => centroids[d.group] ? centroids[d.group].y : height / 2)
+                    .strength(0.3);
+
+                self.simulation
+                    .force("x", forceX)
+                    .force("y", forceY);
+
+                updateGroups();
             }
 
             function dragstarted(d) {

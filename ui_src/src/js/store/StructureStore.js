@@ -18,20 +18,17 @@
     let types = {};
     let typesList = [];
     let typesGraphData = {
-        nodesMap: {},
         nodes: [],
         links: []
     };
     let linksGraphData = {
-        nodesMap: {},
         nodes: [],
         links: []
     };
-    let selectedType = null;
-    let lastUpdate = null;
-    let selectedNode;
+    let selectedType = undefined;
+    let lastUpdate = undefined;
     let releasedStage = false;
-    let highlightedNode;
+    let highlightedType;
     let searchQuery = "";
     let searchResults = [];
     
@@ -86,7 +83,7 @@
                     };
                     if (Array.isArray(targetType["https://kg.ebrains.eu/vocab/meta/spaces"])) {
                         type.spaces = targetType["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
-                            type: space["https://kg.ebrains.eu/vocab/meta/type"],
+                            //type: space["https://kg.ebrains.eu/vocab/meta/type"],
                             name: space["https://kg.ebrains.eu/vocab/meta/space"],
                             occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
                         }));
@@ -110,6 +107,7 @@
                 properties: simplifyPropertiesSemeantics(space["https://kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
+        type.hash = hashCode(type.id);
         return type;
     };
 
@@ -157,14 +155,62 @@
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
                 return acc;
             }, {});
-            type.linksTo = Object.values(linksTo).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
-        }
+            return Object.values(linksTo).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
+        };
+    
+        const enrichTypeSpacesLinksTo = type => {
+            const links = [];
+            type.spaces.forEach(spaceFrom => {
+                if (excludedProperties.length) {
+                    spaceFrom.properties = spaceFrom.properties.filter(property => !excludedProperties.includes(property.name));
+                }
+                spaceFrom.properties.forEach(property => {
+                    const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                    if (excludedPropertiesForLinks.includes(property.name)) {
+                        property.excludeLinks = true;
+                    }
+                    property.targetTypes.forEach(targetType => {
+                        const target = types[targetType.id];
+                        if (target) {
+                            targetType.name = target.name;
+                        } else {
+                            targetType.name = targetType.id;
+                            targetType.isUnknown = true;
+                        }
+                        if (excludedTypes.includes(targetType.id)) {
+                            targetType.isExcluded = true;
+                        }
+                        if (!property.excludeLinks) {
+                            targetType.spaces.forEach(spaceTo => {
+                                const link = {
+                                    occurrences: spaceTo.occurrences,
+                                    //sourceSpace: spaceFrom.name,
+                                    targetSpace: spaceTo.name,
+                                    targetId: targetType.id,
+                                    targetName: targetType.name,
+                                    provenance: provenance
+                                };
+                                if (targetType.isExcluded) {
+                                    link.isExcluded = true;
+                                }
+                                if (targetType.isUnknown) {
+                                    link.isUnknown = true;
+                                }
+                                links.push(link);
+                            });
+                        }
+                    });
+                });
+            });
+            return links;
+        };
     
         const enrichTypesLinks = () => {
     
             const linksFrom = {};
             typesList.forEach(type => {
-                enrichTypeLinksTo(type);
+                type.linksTo = enrichTypeLinksTo(type);
+
                 type.linksFrom = [];
                 type.linksTo.forEach(linkTo => {
                     if (!linksFrom[linkTo.targetId]) {
@@ -182,6 +228,8 @@
                     }
                     linksFrom[linkTo.targetId][type.id].occurrences += linkTo.occurrences;
                 });
+
+                type.spacesLinksTo = enrichTypeSpacesLinksTo(type);
             });
             Object.entries(linksFrom).forEach(([target, sources]) => {
                 const type = types[target];
@@ -229,6 +277,57 @@
         return Object.values(uniqueTypes);
     };
 
+
+    const buildGraphData = (typesList, withLinks) => {
+
+        const nodes = typesList.reduce((acc, type) => {
+            if (!excludedTypes.includes(type.id)) {
+                type.spaces.forEach(space => {
+                    acc[space.name + "/" + type.id] = {
+                        hash: hashCode(space.name + "/" + type.id),
+                        id: type.id,
+                        name: type.name,
+                        occurrences: space.occurrences,
+                        group: space.name,
+                        type: type,
+                        linksTo: [],
+                        linksFrom: []
+                    };
+                });
+            }
+            return acc;
+        }, {});
+
+        let links = [];
+
+        if (withLinks) {
+            links = Object.values(nodes).reduce((acc, sourceNode) => {
+                const type = sourceNode.type;
+                type.spacesLinksTo
+                    .forEach(relation => {
+                        if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
+                            const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
+                            if (targetNode) {
+                                acc.push({
+                                    occurrences: relation.occurrences,
+                                    source: sourceNode,
+                                    target: targetNode,
+                                    provenance: relation.provenance
+                                });
+                            }
+                        }
+                    });
+                return acc;
+            }, []);
+        }
+
+        return {
+            nodes: Object.values(nodes),
+            links: links
+        };
+    };
+
+
     const buildLinksGraphData = () => {
         const directLinkedToTypes = getLinkedToTypes(selectedType);
         const directLinkedFromTypes = getLinkedFromTypes(selectedType);
@@ -242,105 +341,11 @@
         
         const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);//, ...nextLinkedToTypes]);
 
-        const nodes = typesList.reduce((acc, type) => {
-            if (!excludedTypes.includes(type.id)) {
-                const hash = hashCode(type.id);
-                acc[type.id] = {
-                    hash: hash,
-                    typeHash: hash,
-                    id: type.id,
-                    name: type.name,
-                    occurrences: type.occurrences,
-                    type: type,
-                    linksTo: [],
-                    linksFrom: []
-                };
-            }
-            return acc
-        }, {});
-
-        typesList.forEach(type => {
-            const node = nodes[type.id];
-            if (node) { // node can be undefined because of excludedTypes
-                node.linksTo = type.linksTo.reduce((acc, relation) => {
-                    if (nodes[relation.targetId]) {
-                        acc.push(nodes[relation.targetId]);
-                    }
-                    return acc;
-                }, []);
-            }
-        });
-
-        const links = typesList.reduce((acc, type) => {
-            const sourceNode = nodes[type.id];
-            if (sourceNode) { // sourceNode can be undefined because of excludedTypes
-                type.linksTo
-                    .forEach(relation => {
-                        if (relation.target !== type.id && !excludedTypes.includes(relation.target)) {
-                            const targetNode = nodes[relation.targetId];
-                            if (targetNode) {// && (type.id === selectedType.id || relation.targetId === selectedType.id)) {
-                                const key = type.id + "-" + relation.targetId;
-                                if (!acc[key]) {
-                                    acc[key] = {
-                                        occurrences: 0,
-                                        source: sourceNode,
-                                        target: targetNode,
-                                        provenance: relation.provenance
-                                    }
-                                }
-                                acc[key].occurrences += relation.occurrences;
-                            }
-                        }
-                    });
-            }
-            return acc;
-        }, {});
-
-        linksGraphData = {
-            nodesMap: nodes,
-            nodes: Object.values(nodes),
-            links: Object.values(links)
-        };
+        linksGraphData = buildGraphData(typesList, true);
     }
 
     const buildTypesGraphData = () => {
-
-        const nodesMap = {};
-        const nodes = typesList.reduce((acc, type) => {
-            if (!excludedTypes.includes(type.id)) {
-                const hash = hashCode(type.id);
-                nodesMap[type.id] = {
-                    hash: hash,
-                    typeHash: hash,
-                    id: type.id,
-                    name: type.name,
-                    occurrences: type.occurrences,
-                    type: type,
-                    linksTo: [],
-                    linksFrom: []
-                };
-                type.spaces.forEach(space => {
-                    acc.push({
-                        hash: hashCode(space.name + "/" + type.id),
-                        typeHash: hashCode(type.id),
-                        id: type.id,
-                        name: type.name,
-                        occurrences: space.occurrences,
-                        group: space.name,
-                        type: type,
-                        linksTo: [],
-                        linksFrom: []
-                    });
-                });
-            }
-            return acc;
-        }, []);
-
-        typesGraphData = {
-            nodesMap: nodesMap,
-            nodes: nodes,
-            links: []
-        };
+        typesGraphData = buildGraphData(typesList, false);
     };
 
     const search = query => {
@@ -364,7 +369,7 @@
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
-            "NODE_SELECTED", "NODE_HIGHLIGHTED",
+            "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
             "SHOW_SEARCH_PANEL", "STAGE_RELEASED"
         ],
         init, reset);
@@ -389,7 +394,7 @@
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
-                    selectedType = null;
+                    selectedType = undefined;
                     buildTypes(data);
                     search();
                     buildTypesGraphData();
@@ -406,70 +411,36 @@
         }
     });
 
-    structureStore.addAction("structure:node_select", node => {
-        if (node) {
-            if (node !== selectedNode) {
-                search();
-                highlightedNode = undefined;
-                selectedType = node.type;
-                buildLinksGraphData();
-                selectedNode = linksGraphData.nodesMap[selectedType.id];
-                selectedNode.x = node.x;
-                selectedNode.y = node.y;
-                structureStore.toggleState("NODE_HIGHLIGHTED", false);
-                structureStore.toggleState("NODE_SELECTED", !!node);
-                structureStore.toggleState("SHOW_SEARCH_PANEL", false);
-            }
-        } else if (selectedNode) {
-            search();
-            highlightedNode = undefined;
-            selectedNode = undefined;
-            selectedType = undefined;
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_SELECTED", false);
-        }
-        structureStore.notifyChange();
-    });
-
-    structureStore.addAction("structure:node_highlight", node => {
-        highlightedNode = node;
-        structureStore.toggleState("NODE_HIGHLIGHTED", !!node);
-        structureStore.notifyChange();
-    });
-
     structureStore.addAction("structure:type_select", id => {
         const type = types[id];
         if (type) {
             if (type !== selectedType) {
                 search();
-                highlightedNode = undefined;
+                highlightedType = undefined;
                 selectedType = type;
                 buildLinksGraphData();
-                selectedNode = linksGraphData.nodesMap[id];
-                structureStore.toggleState("NODE_HIGHLIGHTED", false);
-                structureStore.toggleState("NODE_SELECTED", !!type);
+                structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+                structureStore.toggleState("TYPE_SELECTED", !!type);
                 structureStore.toggleState("SHOW_SEARCH_PANEL", false);
             }
         } else if (selectedType) {
             search();
-            highlightedNode = undefined;
-            selectedNode = undefined;
+            highlightedType = undefined;
             selectedType = undefined;
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_HIGHLIGHTED", false);
-            structureStore.toggleState("NODE_SELECTED", false);
+            structureStore.toggleState("TYPE_HIGHLIGHTED", false);
+            structureStore.toggleState("TYPE_SELECTED", false);
         }
         structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:type_highlight", id => {
-        if (selectedType) {
-            highlightedNode = linksGraphData.nodesMap[id];
+        const type = types[id];
+        if (type) {
+            highlightedType = type;
         } else {
-            highlightedNode = typesGraphData.nodesMap[id];
+            highlightedType = undefined;
         }
-        structureStore.toggleState("NODE_HIGHLIGHTED", !!highlightedNode);
+        structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
         structureStore.notifyChange();
     });
 
@@ -499,9 +470,7 @@
 
     structureStore.addInterface("getSearchResults", () => searchResults);
 
-    structureStore.addInterface("getSelectedNode", () => selectedNode);
-
-    structureStore.addInterface("getHighlightedNode", () => highlightedNode);
+    structureStore.addInterface("getHighlightedType", () => highlightedType);
 
     structureStore.addInterface("getGraphData", () => selectedType?linksGraphData:typesGraphData);
 
