@@ -79,7 +79,8 @@
         .title{
             font-size:1.2em;
             line-height: 1.6em;
-            margin: 15px 0 12px 0;
+            margin: 15px 50px 12px 0;
+            word-break: break-word;
         }
 
         .id{
