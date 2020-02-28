@@ -385,7 +385,7 @@
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
-            "SHOW_SEARCH_PANEL", "STAGE_RELEASED"
+            "TYPE_DETAILS_SHOW", "STAGE_RELEASED"
         ],
         init, reset);
 
@@ -436,7 +436,7 @@
                 buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
-                structureStore.toggleState("SHOW_SEARCH_PANEL", false);
+                structureStore.toggleState("TYPE_DETAILS_SHOW", true);
             }
         } else if (selectedType) {
             search();
@@ -444,6 +444,7 @@
             selectedType = undefined;
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
+            structureStore.toggleState("TYPE_DETAILS_SHOW", false);
         }
         structureStore.notifyChange();
     });
@@ -464,8 +465,8 @@
         structureStore.notifyChange();
     });
 
-    structureStore.addAction("structure:search_panel_toggle", () => {
-        structureStore.toggleState("SHOW_SEARCH_PANEL");
+    structureStore.addAction("structure:type_details_show", show => {
+        structureStore.toggleState("TYPE_DETAILS_SHOW", !!show);
         structureStore.notifyChange();
     });
 

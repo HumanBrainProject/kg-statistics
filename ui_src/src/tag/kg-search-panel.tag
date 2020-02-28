@@ -16,41 +16,33 @@
 -->
 <kg-search-panel>
     <style scoped>
-         :scope.open {
-            right: var(--sidebar-width);
-            z-index:10;
-        }
-
          :scope {
-            padding: 15px 15px;
+            display: block;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            padding: 15px;
+            background: #111;
             color:white;
         }
 
-        button.open-panel {
-            position: absolute;
-            top: 10px;
-            left: -40px;
-            width: 40px;
-            height: 40px;
-            line-height: 40px;
-            background: #222;
-            border-radius: 10px 0 0 10px;
-            appearance: none;
-            -webkit-appearance: none;
-            border: none;
-            outline: none;
-            font-size: 20px;
-            color: #ccc;
-            padding: 0;
-            margin: 0;
-            text-align:center;
+        .panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            border: 1px solid #444;
+            border-radius: 5px 5px 0 0;
         }
 
         .searchbox {
+            padding: 15px;
+        }
+
+        .searchbox input {
             appearance: none;
             -webkit-appearance: none;
             width: 100%;
-            padding: 0 8px;
+            padding: 0 8px 0 30px;
             background: #333;
             border: #ccc;
             outline: none;
@@ -61,16 +53,43 @@
             font-size: 16px;
         }
 
+        .searchbox i {
+            position: absolute;
+            top: 22px;
+            left: 38px;
+        }
+
         .results{
-            margin-top: 15px;
-            max-height:calc(100% - 45px);
-            overflow-y:auto;
+            flex: 1;
+            padding: 15px;
+            border-top: 1px solid #444;
+        }
+
+        .scroll {
+            overflow-y: auto;
+        }
+        
+        .scroll::-webkit-scrollbar-track{
+            -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3);
+            background-color: #222;
+        }
+
+        .scroll::-webkit-scrollbar {
+            width: 10px; /* 8px */
+            background-color: #F5F5F5;
+        }
+
+        .scroll::-webkit-scrollbar-thumb {
+            background-color: #000000;
+            /* border: 1px solid #222; */
+            border-radius: 5px;
         }
 
         ul {
-            font-size: 0.8em;
-            padding-left: 0;
+            margin: 0;
+            padding: 0;
             list-style: none;
+            font-size: 0.8em;
         }
 
         li {
@@ -78,61 +97,56 @@
             line-height: 1;
         }
 
-        .occurrences {
-            background-color: #444;
-            display: inline-block;   
+        .occurrences {    
+            display: inline-block;
             min-width: 21px;
             margin-left: 3px;
             padding: 3px 6px;
             border-radius: 12px;
+            background-color: #444;
             font-size: 10px;
             text-align: center;
-            font-weight:bold;
-            line-height:1.2;
+            font-weight: bold;
+            line-height: 1.2;
         }
 
         .no-results{
-            font-size:1.1em;
             font-style:italic;
-            margin-top:15px;
         }
+
         .disabled{
             text-decoration: line-through;
             color:#aaa;
         }
     </style>
 
-    <button class="open-panel" onclick={togglePanel}>
-        <i class="fa fa-search" aria-hidden="true"></i>
-    </button>
-
-    <input type="text" class="searchbox" ref="query" onkeyup={doSearch}>
-    
-    <div class="results" if={results.length > 0}>
-        <div class="title" if={!!query}>
-            Results
+    <div class="panel">
+        <div class="searchbox">
+            <input type="text" ref="query" onkeyup={doSearch}>
+            <i class="fa fa-search" aria-hidden="true"></i>
         </div>
-        <ul>
-            <li each={type in results}>
-                <a href="#" onclick={selectType} onmouseover={highlightType} onmouseout={unhighlightType} title={type.id}>{type.name}</a>
-                <span class="occurrences">{type.occurrences}</span>
-            </li>
-        </ul>
-    </div>
-
-    <div class="no-results" if={!results.length && !!query}>
-        Not types found
+        <div class="results scroll">
+            <ul if={results.length > 0}>
+                <li each={type in results}>
+                    <a href="#" onclick={selectType} onmouseover={highlightType} onmouseout={unhighlightType} title={type.id}>{type.name}</a>
+                    <span class="occurrences">{type.occurrences}</span>
+                </li>
+            </ul>
+            <div class="no-results" if={results.length <= 1 && !!refs.query.value.length}>
+                No type matches your search!
+            </div>
+        </div>
     </div>
 
     <script>
-        this.selectedType = null;
-        this.lastUpdate = null;
+        this.selectedType = undefined;
+        this.lastUpdate = undefined;
         this.results = [];
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
-            this.results = this.stores.structure.getSearchResults();
+            this.update();
         });
 
         this.on("unmount", () => {
@@ -151,21 +165,10 @@
                 this.refs.query.value = this.stores.structure.getSearchQuery();
             }
 
-            if(this.stores.structure.is("SHOW_SEARCH_PANEL")){
-                if(!$(this.root).hasClass("open")){
-                    $(this.root).addClass("open");
-                    $(this.refs.query).focus();
-                }
-            } else {
-                if($(this.root).hasClass("open")){
-                    $(this.root).removeClass("open");
-                }
+            if(this.stores.structure.is("TYPE_DETAILS_SHOW")){
+                $(this.refs.query).focus();
             }
         });
-
-        this.togglePanel = () => {
-            RiotPolice.trigger("structure:search_panel_toggle");
-        };
 
         this.doSearch = () => {
             RiotPolice.trigger("structure:search", this.refs.query.value);

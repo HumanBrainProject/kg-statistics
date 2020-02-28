@@ -27,7 +27,7 @@
             grid-template-columns: repeat(2, 24px);
             margin: 3px 0;
             border-radius: 20px;
-            background: #141618;
+            background: #333;
         }
 
         button.group-view__toggle__button {
@@ -68,7 +68,7 @@
                 <i class="fa fa-close"></i>
             </button>
         </div>
-        <span>show release data</span>
+        <span>switch to release data</span>
     </div>
 
     <script>

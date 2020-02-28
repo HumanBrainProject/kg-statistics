@@ -339,13 +339,11 @@
             }
 
             this.svg.selectAll(".searchResult").classed("searchResult", false);
-            if (this.stores.structure.is("SHOW_SEARCH_PANEL")) {
-                if (this.stores.structure.getSearchQuery().length) {
-                    const searchResults = this.stores.structure.getSearchResults();
-                    searchResults.forEach(type => {
-                        this.svg.selectAll(".is-type_" + type.hash).classed("searchResult", true);
-                    });
-                }
+            if (this.stores.structure.getSearchQuery().length) {
+                const searchResults = this.stores.structure.getSearchResults();
+                searchResults.forEach(type => {
+                    this.svg.selectAll(".is-type_" + type.hash).classed("searchResult", true);
+                });
             }
         });
 

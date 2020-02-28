@@ -56,6 +56,7 @@
         }
 
         kg-topbar{
+            display: block;
             position:absolute;
             top:0;
             left:0;
@@ -74,29 +75,13 @@
             left:0;
         }
 
-        kg-sidebar{
+        .kg-side-panel{
             position:absolute;
             width:var(--sidebar-width);
             height:calc(100vh - var(--topbar-height));
-            background:#111;
             top:var(--topbar-height);
             right:0;
-            overflow-y: auto;
             z-index:20;
-        }
-
-        kg-search-panel,
-        kg-types-panel,
-        kg-spaces-panel{
-            position:absolute;
-            width:var(--search-panel-width);
-            height:calc(100vh - var(--topbar-height) - 50px);
-            background:#222;
-            top:calc(var(--topbar-height) + 25px);
-            right:calc(var(--sidebar-width) - var(--search-panel-width));
-            overflow:visible;
-            border-radius: 10px 0 0 10px;
-            transition:right 0.5s cubic-bezier(.34,1.06,.63,.93);
         }
 
         .kg-app-container{
@@ -105,15 +90,6 @@
             height:100vh;
             transition:transform 0.7s cubic-bezier(0.77, -0.46, 0.35, 1.66);
             z-index:2;
-        }
-
-        kg-menu-popup{
-            position:absolute;
-            z-index:1;
-            top:0;
-            right:0;
-            height:100vh;
-            width:200px;
         }
 
         .loading-panel {
@@ -224,12 +200,56 @@
             color: white;
         }
 
+
+        .kg-side-panel button.tab-btn {
+            width: 40px;
+            height: 40px;
+            line-height: 40px;
+            background: #222;
+            border-radius: 10px 0 0 10px;
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            outline: none;
+            font-size: 20px;
+            color: #ccc;
+            padding: 0;
+            margin: 0;
+            text-align:center;
+        }
+
+        .kg-side-panel button.tab-btn.is-active {
+            background: #111;
+        }
+
+        .kg-side-panel button.tab-btn.show-search-btn {
+            position: absolute;
+            top: 10px;
+            left: -40px;
+            border-radius: 10px 0 0 0;
+        }
+
+        .kg-side-panel button.tab-btn.show-type-details-btn {
+            position: absolute;
+            top: 50px;
+            left: -40px;
+            border-radius: 0 0 0 10px;
+        }
+
     </style>
     <div class="kg-app-container ">
         <kg-topbar></kg-topbar>
         <kg-body if={isLoaded}></kg-body>
-        <kg-search-panel if={isLoaded}></kg-search-panel>
-        <kg-sidebar if={isLoaded}></kg-sidebar>
+        <div class="kg-side-panel" if={isLoaded}>
+            <button class={"tab-btn show-search-btn " + (isTypeDetailsVisible?"":"is-active")} onclick={showSearch}>
+                <i class="fa fa-search" aria-hidden="true"></i>
+            </button>
+            <button class={"tab-btn show-type-details-btn " + (isTypeDetailsVisible?"is-active":"")} onclick={showTypeDetails}>
+                <i class="fa fa-info" aria-hidden="true"></i>
+            </button>
+            <kg-filters if={!isTypeDetailsVisible}></kg-filters>
+            <kg-type-details if={isTypeDetailsVisible}></kg-type-details>
+        </div>
         <div class="loading-panel {show: isLoading}">
             <span class="loading-spinner">
                 <img src="img/ebrains.svg" alt="loading..." />
@@ -240,19 +260,21 @@
             <span class="error-message">The service is temporary unavailable. Please retry in a moment.</span>
             <div class="error-navigation">
                 <button onClick={retry}>Retry</button>
+            </div>
         </div>
-    </div>
     </div>
 
      <script>
         this.hasError = false;
         this.isLoading = false;
         this.isLoaded = false;
+        this.isTypeDetailsVisible = false;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
             RiotPolice.trigger("structure:load");
+            this.isTypeDetailsVisible = this.stores.structure.is("TYPE_DETAILS_SHOW");
         });
 
         this.on("unmount", () => {
@@ -264,7 +286,16 @@
             this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
             this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
             this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
+            this.isTypeDetailsVisible = this.stores.structure.is("TYPE_DETAILS_SHOW");
         });
+
+        this.showSearch = () => {
+            RiotPolice.trigger("structure:type_details_show", false);
+        };
+
+        this.showTypeDetails = () => {
+            RiotPolice.trigger("structure:type_details_show", true);
+        };
 
         this.retry = e => RiotPolice.trigger("structure:load");
     </script>

@@ -67,20 +67,20 @@
             height:var(--topbar-height);
         }
         button.refresh {
-            margin: 0;
-            padding: 11px 28px;
+            margin: 0;    
+            padding: 8px 10px;
             border: 0;
-            border-radius: 3px;
-            background-color: #333;
+            border-radius: 0;
+            background-color: transparent;
             color: #c9cccf;
             font-size: 1em;
             text-align: center;
-            transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in;
+            transition: color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in;
             cursor: pointer;
         }
         button.refresh:hover{
             box-shadow: 3px 3px 6px black;
-            background-color: #292929;
+            background-color: transparent;
             color: white;
         }
     </style>
@@ -89,12 +89,9 @@
             <img src="img/ebrains.svg" alt="" width="40" height="40" />
             <div class="title">{AppConfig.title}</div>
         </div>
-        <kg-view-mode if={isLoaded}></kg-view-mode>
         <div class="header-right" if={isLoaded} >
             <div class="date" if={date}>KG State at : {date}</div>
-            <button class="refresh" onClick={refresh}>
-                <i class="fa fa-refresh">&nbsp;Refresh</i>
-            </button>
+            <button class="refresh" onClick={refresh} title="refresh"><i class="fa fa-refresh"></i></button>
         </div>
     </div>
 
