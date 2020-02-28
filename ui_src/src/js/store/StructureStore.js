@@ -312,7 +312,8 @@
                             occurrences: space.occurrences,
                             group: space.name,
                             type: type,
-                            linksTo: []
+                            linksTo: [],
+                            linksFrom: []
                         };
                     }
                 });
@@ -323,15 +324,17 @@
         const links = Object.values(nodes).reduce((acc, sourceNode) => {
             const type = sourceNode.type;
             type.spacesLinksTo
-                .forEach(relation => {
-                    if (relation.targetId !== type.id && !excludedTypes.includes(relation.targetId)) {
-                        const targetNode = nodes[relation.targetSpace + "/" + relation.targetId];
+                .forEach(link => {
+                    if (link.targetId !== type.id && !excludedTypes.includes(link.targetId)) {
+                        const targetNode = nodes[link.targetSpace + "/" + link.targetId];
                         if (targetNode && !targetNode.isExcluded && (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
+                            sourceNode.linksTo.push(targetNode);
+                            targetNode.linksFrom.push(sourceNode);
                             acc.push({
-                                occurrences: relation.occurrences,
+                                occurrences: link.occurrences,
                                 source: sourceNode,
                                 target: targetNode,
-                                provenance: relation.provenance
+                                provenance: link.provenance
                             });
                         }
                     }
