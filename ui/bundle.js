@@ -37620,7 +37620,7 @@ riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input
                 this.refs.query.value = this.stores.structure.getSearchQuery();
             }
 
-            if(this.stores.structure.is("TYPE_DETAILS_SHOW")){
+            if(!this.stores.structure.is("TYPE_DETAILS_SHOW")){
                 $(this.refs.query).focus();
             }
         });

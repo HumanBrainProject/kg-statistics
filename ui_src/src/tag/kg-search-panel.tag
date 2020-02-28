@@ -165,7 +165,7 @@
                 this.refs.query.value = this.stores.structure.getSearchQuery();
             }
 
-            if(this.stores.structure.is("TYPE_DETAILS_SHOW")){
+            if(!this.stores.structure.is("TYPE_DETAILS_SHOW")){
                 $(this.refs.query).focus();
             }
         });
