@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-external-space-link-toggle>
+<kg-extra-space-links-toggle>
     <style scoped>
         :scope{
             display:block;
@@ -61,10 +61,10 @@
     </style>
     <div>
         <div class="group-view__toggle">
-            <button class="group-view__toggle__button {selected: showLinksBetweenSpaces}" onClick={toggle} >
+            <button class="group-view__toggle__button {selected: showExtraSpaceLinks}" onClick={toggle} >
                 <i class="fa fa-check"></i>
             </button>
-            <button class="group-view__toggle__button {selected: !showLinksBetweenSpaces}" onClick={toggle} >
+            <button class="group-view__toggle__button {selected: !showExtraSpaceLinks}" onClick={toggle} >
                 <i class="fa fa-close"></i>
             </button>
         </div>
@@ -72,7 +72,7 @@
     </div>
 
     <script>
-        this.showLinksBetweenSpaces = true;
+        this.showExtraSpaceLinks = true;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -86,9 +86,9 @@
         });
 
         this.on("update", () => {
-            this.showLinksBetweenSpaces = this.stores.structure.is("SPACE_LINKS_SHOW");
+            this.showExtraSpaceLinks = this.stores.structure.is("EXTRA_SPACE_LINKS_SHOW");
         });
 
-        this.toggle = () =>  RiotPolice.trigger("structure:space_links_toggle");
+        this.toggle = () => RiotPolice.trigger("structure:space_extra_links_toggle");
     </script>
-</kg-external-space-link-toggle>
+</kg-extra-space-links-toggle>

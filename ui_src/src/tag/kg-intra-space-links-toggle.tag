@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-view-mode>
+<kg-intra-space-links-toggle>
     <style scoped>
         :scope{
             display:block;
@@ -61,34 +61,34 @@
     </style>
     <div>
         <div class="group-view__toggle">
-            <button class="group-view__toggle__button {selected: releasedStage}" onClick={toggle} >
+            <button class="group-view__toggle__button {selected: showIntraSpaceLinks}" onClick={toggle} >
                 <i class="fa fa-check"></i>
             </button>
-            <button class="group-view__toggle__button {selected: !releasedStage}" onClick={toggle} >
+            <button class="group-view__toggle__button {selected: !showIntraSpaceLinks}" onClick={toggle} >
                 <i class="fa fa-close"></i>
             </button>
         </div>
-        <span>switch to release data</span>
+        <span>show intra-space links</span>
     </div>
 
     <script>
-        this.releasedStage = false;
+        this.showIntraSpaceLinks = true;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
-            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
         });
 
         this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
+            this.update();
         });
 
         this.on("update", () => {
-            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
+            this.showIntraSpaceLinks = this.stores.structure.is("INTRA_SPACE_LINKS_SHOW");
         });
 
-        this.toggle = () => RiotPolice.trigger("structure:stage_toggle");
+        this.toggle = () => RiotPolice.trigger("structure:space_intra_links_toggle");
     </script>
-</kg-view-mode>
+</kg-intra-space-links-toggle>

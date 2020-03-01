@@ -144,6 +144,6 @@
             this.spaces = this.stores.structure.getSpacesList();
         });
 
-        this.toggle = e =>  RiotPolice.trigger("structure:space_toggle", e.item.name);
+        this.toggle = e => RiotPolice.trigger("structure:space_toggle", e.item.name);
     </script>
 </kg-spaces-toggles>

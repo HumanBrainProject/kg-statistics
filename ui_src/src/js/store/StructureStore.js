@@ -35,7 +35,8 @@
     let highlightedType;
     let searchQuery = "";
     let searchResults = [];
-    let showLinksBetweenSpaces = true;
+    let showIntraSpaceLinks = false;
+    let showExtraSpaceLinks = true;
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
     const excludedProperties = [];
@@ -303,7 +304,7 @@
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
             if ((ignoreSelectedNode || (selectedType && (selectedType.id === sourceId || selectedType.id === targetId))) &&
-                (showLinksBetweenSpaces || sourceSpace === targetSpace)) {
+                ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace))) {
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
                 enabledNodes[targetSpace + "/" + targetId] =  true;
             }
@@ -342,7 +343,7 @@
                         if (targetNode && 
                             isSpaceEnabled(targetNode.group) && 
                             !targetNode.isExcluded &&
-                            (showLinksBetweenSpaces || sourceNode.group === targetNode.group) && 
+                            ((showIntraSpaceLinks && sourceNode.group === targetNode.group) || (showExtraSpaceLinks && sourceNode.group !== targetNode.group)) &&
                             (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             sourceNode.linksTo.push(targetNode);
                             targetNode.linksFrom.push(sourceNode);
@@ -398,12 +399,15 @@
     };
 
     const init = () => {
-        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+        structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+        structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
     };
 
     const reset = () => {
-        showLinksBetweenSpaces = true;
-        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+        showIntraSpaceLinks = false;
+        showExtraSpaceLinks = true;
+        structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+        structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
         spacesList.forEach(space => space.enabled = true);
     };
 
@@ -411,7 +415,7 @@
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
-            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "SPACE_LINKS_SHOW"
+            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "INTRA_SPACE_LINKS_SHOW", "EXTRA_SPACE_LINKS_SHOW"
         ],
         init, reset);
 
@@ -438,6 +442,10 @@
                     selectedType = undefined;
                     buildTypes(data);
                     search();
+                    showIntraSpaceLinks = true;
+                    showExtraSpaceLinks = true;
+                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
                     buildGlobalGraphData();
                     structureStore.toggleState("STRUCTURE_LOADED", true);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
@@ -459,8 +467,12 @@
                 search();
                 highlightedType = undefined;
                 selectedType = type;
-                showLinksBetweenSpaces = true;
-                structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+                if (!showIntraSpaceLinks || !showExtraSpaceLinks) {
+                    showIntraSpaceLinks = true;
+                    showExtraSpaceLinks = true;
+                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
+                }
                 buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
@@ -470,8 +482,13 @@
             search();
             highlightedType = undefined;
             selectedType = undefined;
-            showLinksBetweenSpaces = true;
-            structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+            if (showIntraSpaceLinks || !showExtraSpaceLinks) {
+                showIntraSpaceLinks = false;
+                showExtraSpaceLinks = true;
+                structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+                structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
+                buildGlobalGraphData();
+            }
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
             structureStore.toggleState("TYPE_DETAILS_SHOW", false);
@@ -511,9 +528,19 @@
         }
     });
 
-    structureStore.addAction("structure:space_links_toggle", () => {
-        showLinksBetweenSpaces = !showLinksBetweenSpaces;
-        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+    structureStore.addAction("structure:space_intra_links_toggle", () => {
+        showIntraSpaceLinks = !showIntraSpaceLinks;
+        structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+        buildGlobalGraphData();
+        if (selectedType) {
+            buildTypeGraphData();
+        }
+        structureStore.notifyChange();
+    });
+
+    structureStore.addAction("structure:space_extra_links_toggle", () => {
+        showExtraSpaceLinks = !showExtraSpaceLinks;
+        structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
         buildGlobalGraphData();
         if (selectedType) {
             buildTypeGraphData();

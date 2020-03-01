@@ -36477,7 +36477,8 @@ class RiotStore {
     let highlightedType;
     let searchQuery = "";
     let searchResults = [];
-    let showLinksBetweenSpaces = true;
+    let showIntraSpaceLinks = false;
+    let showExtraSpaceLinks = true;
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
     const excludedProperties = [];
@@ -36745,7 +36746,7 @@ class RiotStore {
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
             if ((ignoreSelectedNode || (selectedType && (selectedType.id === sourceId || selectedType.id === targetId))) &&
-                (showLinksBetweenSpaces || sourceSpace === targetSpace)) {
+                ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace))) {
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
                 enabledNodes[targetSpace + "/" + targetId] =  true;
             }
@@ -36784,7 +36785,7 @@ class RiotStore {
                         if (targetNode && 
                             isSpaceEnabled(targetNode.group) && 
                             !targetNode.isExcluded &&
-                            (showLinksBetweenSpaces || sourceNode.group === targetNode.group) && 
+                            ((showIntraSpaceLinks && sourceNode.group === targetNode.group) || (showExtraSpaceLinks && sourceNode.group !== targetNode.group)) &&
                             (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             sourceNode.linksTo.push(targetNode);
                             targetNode.linksFrom.push(sourceNode);
@@ -36840,12 +36841,15 @@ class RiotStore {
     };
 
     const init = () => {
-        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+        structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+        structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
     };
 
     const reset = () => {
-        showLinksBetweenSpaces = true;
-        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+        showIntraSpaceLinks = false;
+        showExtraSpaceLinks = true;
+        structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+        structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
         spacesList.forEach(space => space.enabled = true);
     };
 
@@ -36853,7 +36857,7 @@ class RiotStore {
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
-            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "SPACE_LINKS_SHOW"
+            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "INTRA_SPACE_LINKS_SHOW", "EXTRA_SPACE_LINKS_SHOW"
         ],
         init, reset);
 
@@ -36880,6 +36884,10 @@ class RiotStore {
                     selectedType = undefined;
                     buildTypes(data);
                     search();
+                    showIntraSpaceLinks = true;
+                    showExtraSpaceLinks = true;
+                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
                     buildGlobalGraphData();
                     structureStore.toggleState("STRUCTURE_LOADED", true);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
@@ -36901,8 +36909,12 @@ class RiotStore {
                 search();
                 highlightedType = undefined;
                 selectedType = type;
-                showLinksBetweenSpaces = true;
-                structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+                if (!showIntraSpaceLinks || !showExtraSpaceLinks) {
+                    showIntraSpaceLinks = true;
+                    showExtraSpaceLinks = true;
+                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
+                }
                 buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
@@ -36912,8 +36924,13 @@ class RiotStore {
             search();
             highlightedType = undefined;
             selectedType = undefined;
-            showLinksBetweenSpaces = true;
-            structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+            if (showIntraSpaceLinks || !showExtraSpaceLinks) {
+                showIntraSpaceLinks = false;
+                showExtraSpaceLinks = true;
+                structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+                structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
+                buildGlobalGraphData();
+            }
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
             structureStore.toggleState("TYPE_DETAILS_SHOW", false);
@@ -36953,9 +36970,19 @@ class RiotStore {
         }
     });
 
-    structureStore.addAction("structure:space_links_toggle", () => {
-        showLinksBetweenSpaces = !showLinksBetweenSpaces;
-        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+    structureStore.addAction("structure:space_intra_links_toggle", () => {
+        showIntraSpaceLinks = !showIntraSpaceLinks;
+        structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
+        buildGlobalGraphData();
+        if (selectedType) {
+            buildTypeGraphData();
+        }
+        structureStore.notifyChange();
+    });
+
+    structureStore.addAction("structure:space_extra_links_toggle", () => {
+        showExtraSpaceLinks = !showExtraSpaceLinks;
+        structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
         buildGlobalGraphData();
         if (selectedType) {
             buildTypeGraphData();
@@ -37644,8 +37671,8 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
         };
 });
 
-riot.tag2('kg-external-space-link-toggle', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: showLinksBetweenSpaces}" onclick="{toggle}"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !showLinksBetweenSpaces}" onclick="{toggle}"> <i class="fa fa-close"></i> </button> </div> <span>show links between spaces</span> </div>', 'kg-external-space-link-toggle,[data-is="kg-external-space-link-toggle"]{ display:block; color: white; } kg-external-space-link-toggle .group-view__toggle,[data-is="kg-external-space-link-toggle"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-external-space-link-toggle button.group-view__toggle__button,[data-is="kg-external-space-link-toggle"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-external-space-link-toggle button.group-view__toggle__button.selected,[data-is="kg-external-space-link-toggle"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-external-space-link-toggle span,[data-is="kg-external-space-link-toggle"] span{ padding-left: 3px; }', '', function(opts) {
-        this.showLinksBetweenSpaces = true;
+riot.tag2('kg-extra-space-links-toggle', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: showExtraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !showExtraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-close"></i> </button> </div> <span>show links between spaces</span> </div>', 'kg-extra-space-links-toggle,[data-is="kg-extra-space-links-toggle"]{ display:block; color: white; } kg-extra-space-links-toggle .group-view__toggle,[data-is="kg-extra-space-links-toggle"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-extra-space-links-toggle button.group-view__toggle__button,[data-is="kg-extra-space-links-toggle"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-extra-space-links-toggle button.group-view__toggle__button.selected,[data-is="kg-extra-space-links-toggle"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-extra-space-links-toggle span,[data-is="kg-extra-space-links-toggle"] span{ padding-left: 3px; }', '', function(opts) {
+        this.showExtraSpaceLinks = true;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -37659,13 +37686,34 @@ riot.tag2('kg-external-space-link-toggle', '<div> <div class="group-view__toggle
         });
 
         this.on("update", () => {
-            this.showLinksBetweenSpaces = this.stores.structure.is("SPACE_LINKS_SHOW");
+            this.showExtraSpaceLinks = this.stores.structure.is("EXTRA_SPACE_LINKS_SHOW");
         });
 
-        this.toggle = () =>  RiotPolice.trigger("structure:space_links_toggle");
+        this.toggle = () => RiotPolice.trigger("structure:space_extra_links_toggle");
 });
 
-riot.tag2('kg-filters', '<div> <kg-view-mode></kg-view-mode> </div> <kg-search-panel></kg-search-panel> <kg-spaces-toggles></kg-spaces-toggles> <div> <kg-external-space-link-toggle></kg-external-space-link-toggle> </div>', 'kg-filters,[data-is="kg-filters"]{ display: flex; flex-direction: column; position: relative; height: 100%; background: #111; color:white; } kg-filters > div,[data-is="kg-filters"] > div{ padding: 15px; } kg-filters kg-search-panel,[data-is="kg-filters"] kg-search-panel{ flex: 4; overflow: hidden; padding: 0 15px; } kg-filters kg-spaces-toggles,[data-is="kg-filters"] kg-spaces-toggles{ flex: 1; overflow: hidden; padding: 15px 15px 0 15px; }', '', function(opts) {
+riot.tag2('kg-filters', '<div> <kg-view-mode></kg-view-mode> </div> <kg-search-panel></kg-search-panel> <kg-spaces-toggles></kg-spaces-toggles> <div> <kg-intra-space-links-toggle></kg-intra-space-links-toggle> <kg-extra-space-links-toggle></kg-extra-space-links-toggle> </div>', 'kg-filters,[data-is="kg-filters"]{ display: flex; flex-direction: column; position: relative; height: 100%; background: #111; color:white; } kg-filters > div,[data-is="kg-filters"] > div{ padding: 15px; } kg-filters kg-search-panel,[data-is="kg-filters"] kg-search-panel{ flex: 4; overflow: hidden; padding: 0 15px; } kg-filters kg-spaces-toggles,[data-is="kg-filters"] kg-spaces-toggles{ flex: 1; overflow: hidden; padding: 15px 15px 0 15px; }', '', function(opts) {
+});
+
+riot.tag2('kg-intra-space-links-toggle', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: showIntraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !showIntraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-close"></i> </button> </div> <span>show intra-space links</span> </div>', 'kg-intra-space-links-toggle,[data-is="kg-intra-space-links-toggle"]{ display:block; color: white; } kg-intra-space-links-toggle .group-view__toggle,[data-is="kg-intra-space-links-toggle"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-intra-space-links-toggle button.group-view__toggle__button,[data-is="kg-intra-space-links-toggle"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-intra-space-links-toggle button.group-view__toggle__button.selected,[data-is="kg-intra-space-links-toggle"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-intra-space-links-toggle span,[data-is="kg-intra-space-links-toggle"] span{ padding-left: 3px; }', '', function(opts) {
+        this.showIntraSpaceLinks = true;
+
+        this.on("mount", () => {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+            this.update();
+        });
+
+        this.on("update", () => {
+            this.showIntraSpaceLinks = this.stores.structure.is("INTRA_SPACE_LINKS_SHOW");
+        });
+
+        this.toggle = () => RiotPolice.trigger("structure:space_intra_links_toggle");
 });
 
 riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input type="text" ref="query" onkeyup="{doSearch}"> <i class="fa fa-search" aria-hidden="true"></i> </div> <div class="results scroll"> <ul if="{results.length > 0}"> <li each="{type in results}"> <a href="#" onclick="{selectType}" onmouseover="{highlightType}" onmouseout="{unhighlightType}" title="{type.id}">{type.name}</a> <span class="occurrences">{type.occurrences}</span> </li> </ul> <div class="no-results" if="{results.length <= 1 && !!refs.query.value.length}"> No type matches your search! </div> </div> </div>', 'kg-search-panel,[data-is="kg-search-panel"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-search-panel .panel,[data-is="kg-search-panel"] .panel{ display: flex; flex-direction: column; height: 100%; border: 1px solid #444; border-radius: 5px 5px 0 0; } kg-search-panel .searchbox,[data-is="kg-search-panel"] .searchbox{ padding: 15px; } kg-search-panel .searchbox input,[data-is="kg-search-panel"] .searchbox input{ appearance: none; -webkit-appearance: none; width: 100%; padding: 0 8px 0 30px; background: #333; border: #ccc; outline: none; border-radius: 5px; height: 30px; line-height: 30px; color: white; font-size: 16px; } kg-search-panel .searchbox i,[data-is="kg-search-panel"] .searchbox i{ position: absolute; top: 22px; left: 38px; } kg-search-panel .results,[data-is="kg-search-panel"] .results{ flex: 1; padding: 15px; border-top: 1px solid #444; } kg-search-panel .scroll,[data-is="kg-search-panel"] .scroll{ overflow-y: auto; } kg-search-panel .scroll::-webkit-scrollbar-track,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-search-panel .scroll::-webkit-scrollbar,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-search-panel .scroll::-webkit-scrollbar-thumb,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-search-panel ul,[data-is="kg-search-panel"] ul{ margin: 0; padding: 0; list-style: none; font-size: 0.8em; } kg-search-panel li,[data-is="kg-search-panel"] li{ padding: 3px 0; line-height: 1; } kg-search-panel .occurrences,[data-is="kg-search-panel"] .occurrences{ display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; background-color: #444; font-size: 10px; text-align: center; font-weight: bold; line-height: 1.2; } kg-search-panel .no-results,[data-is="kg-search-panel"] .no-results{ font-style:italic; } kg-search-panel .disabled,[data-is="kg-search-panel"] .disabled{ text-decoration: line-through; color:#aaa; }', '', function(opts) {
@@ -37735,7 +37783,7 @@ riot.tag2('kg-spaces-toggles', '<div class="panel"> <div class="title">Spaces:</
             this.spaces = this.stores.structure.getSpacesList();
         });
 
-        this.toggle = e =>  RiotPolice.trigger("structure:space_toggle", e.item.name);
+        this.toggle = e => RiotPolice.trigger("structure:space_toggle", e.item.name);
 });
 
 riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <div class="header-right" if="{isLoaded}"> <div class="date" if="{date}">KG State at : {date}</div> <button class="refresh" onclick="{refresh}" title="refresh"><i class="fa fa-refresh"></i></button> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); } kg-topbar button.refresh,[data-is="kg-topbar"] button.refresh{ margin: 0; padding: 8px 10px; border: 0; border-radius: 0; background-color: transparent; color: #c9cccf; font-size: 1em; text-align: center; transition: color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-topbar button.refresh:hover,[data-is="kg-topbar"] button.refresh:hover{ box-shadow: 3px 3px 6px black; background-color: transparent; color: white; }', '', function(opts) {
@@ -37832,7 +37880,7 @@ riot.tag2('kg-view-mode', '<div> <div class="group-view__toggle"> <button class=
             this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
         });
 
-        this.toggle = () =>  RiotPolice.trigger("structure:stage_toggle");
+        this.toggle = () => RiotPolice.trigger("structure:stage_toggle");
 });
 /*
 *   Copyright (c) 2018, EPFL/Human Brain Project PCO

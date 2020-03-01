@@ -49,7 +49,8 @@
         <kg-search-panel></kg-search-panel>
         <kg-spaces-toggles></kg-spaces-toggles>
         <div>
-          <kg-external-space-link-toggle></kg-external-space-link-toggle>
+          <kg-intra-space-links-toggle></kg-intra-space-links-toggle>
+          <kg-extra-space-links-toggle></kg-extra-space-links-toggle>
         </div>
 
 </kg-filters>
