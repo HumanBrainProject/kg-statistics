@@ -35,6 +35,7 @@
     let highlightedType;
     let searchQuery = "";
     let searchResults = [];
+    let showLinksBetweenSpaces = true;
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
     const excludedProperties = [];
@@ -260,16 +261,18 @@
         }, {});
 
         typesList = Object.values(types);
-        spacesList = Object.values(spaces);
+        spacesList = Object.values(spaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
 
         enrichTypesLinks();
     };
 
-    const belongsToEnabledSpace = type => !!type.spaces.filter(space => spaces[space.name] && spaces[space.name].enabled).length;
+    const isSpaceEnabled = name => !!spaces[name] && spaces[name].enabled;
+
+    const typeBelongsToEnabledSpace = type => !!type.spaces.filter(space => isSpaceEnabled(space.name)).length;
 
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         const target = types[linkTo.targetId];
-        if (target && !target.isExcluded && belongsToEnabledSpace(type)) {
+        if (target && !target.isExcluded && typeBelongsToEnabledSpace(target)) {
             acc.push(target);
         }
         return acc;
@@ -277,7 +280,7 @@
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
         const source = types[linkFrom.sourceId];
-        if (source && !source.isExcluded && belongsToEnabledSpace(type)) {
+        if (source && !source.isExcluded && typeBelongsToEnabledSpace(source)) {
             acc.push(source);
         }
         return acc;
@@ -299,22 +302,21 @@
         const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
-            if (selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) {
+            if ((ignoreSelectedNode || (selectedType && (selectedType.id === sourceId || selectedType.id === targetId))) &&
+                (showLinksBetweenSpaces || sourceSpace === targetSpace)) {
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
                 enabledNodes[targetSpace + "/" + targetId] =  true;
             }
-        }
+        };
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        if (!ignoreSelectedNode) {
-            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
-        }
+        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
 
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    if (spaces[space.name] && spaces[space.name].enabled && (ignoreSelectedNode || isNodeEnabled(space.name, type.id))) {
+                    if (isSpaceEnabled(space.name) && isNodeEnabled(space.name, type.id)) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -338,8 +340,9 @@
                     if (link.targetId !== type.id && !excludedTypes.includes(link.targetId)) {
                         const targetNode = nodes[link.targetSpace + "/" + link.targetId];
                         if (targetNode && 
-                            spaces[targetNode.group] && spaces[targetNode.group].enabled && 
-                            !targetNode.isExcluded && 
+                            isSpaceEnabled(targetNode.group) && 
+                            !targetNode.isExcluded &&
+                            (showLinksBetweenSpaces || sourceNode.group === targetNode.group) && 
                             (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             sourceNode.linksTo.push(targetNode);
                             targetNode.linksFrom.push(sourceNode);
@@ -366,7 +369,7 @@
     const buildTypeGraphData = () => {
 
         let filteredTypesList = [];
-        if (belongsToEnabledSpace(selectedType)) {
+        if (typeBelongsToEnabledSpace(selectedType)) {
 
             const directLinkedToTypes = getLinkedToTypes(selectedType);
             const directLinkedFromTypes = getLinkedFromTypes(selectedType);
@@ -379,7 +382,7 @@
 
     const buildGlobalGraphData = () => {
 
-        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && belongsToEnabledSpace(type));
+        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && typeBelongsToEnabledSpace(type));
 
         globalGraphData = buildGraphData(filteredTypesList, true);
     };
@@ -395,18 +398,20 @@
     };
 
     const init = () => {
-
+        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
     };
 
     const reset = () => {
-
+        showLinksBetweenSpaces = true;
+        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+        spacesList.forEach(space => space.enabled = true);
     };
 
     const structureStore = new RiotStore("structure",
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
-            "TYPE_DETAILS_SHOW", "STAGE_RELEASED"
+            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "SPACE_LINKS_SHOW"
         ],
         init, reset);
 
@@ -454,6 +459,8 @@
                 search();
                 highlightedType = undefined;
                 selectedType = type;
+                showLinksBetweenSpaces = true;
+                structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
                 buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
@@ -463,6 +470,8 @@
             search();
             highlightedType = undefined;
             selectedType = undefined;
+            showLinksBetweenSpaces = true;
+            structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
             structureStore.toggleState("TYPE_DETAILS_SHOW", false);
@@ -500,6 +509,16 @@
             }
             structureStore.notifyChange();
         }
+    });
+
+    structureStore.addAction("structure:space_links_toggle", () => {
+        showLinksBetweenSpaces = !showLinksBetweenSpaces;
+        structureStore.toggleState("SPACE_LINKS_SHOW", showLinksBetweenSpaces);
+        buildGlobalGraphData();
+        if (selectedType) {
+            buildTypeGraphData();
+        }
+        structureStore.notifyChange();
     });
 
     /**

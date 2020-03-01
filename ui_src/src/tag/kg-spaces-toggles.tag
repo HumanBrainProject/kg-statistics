@@ -33,14 +33,14 @@
         }
 
         .title {
-            margin: 0 0 5px 0;
-            padding: 0 0 5px 0;
-            border-bottom: 1px solid #444;
+            padding: 5px 0;
         }
 
         .scroll {
             flex: 1;
             overflow-y: auto;
+            padding: 5px 15px;
+            border: 1px solid #444;
         }
         
         .scroll::-webkit-scrollbar-track{
