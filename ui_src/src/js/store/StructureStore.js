@@ -17,11 +17,15 @@
 (function () {
     let types = {};
     let typesList = [];
+    let spaces = {};
+    let spacesList = [];
     let globalGraphData = {
+        hash: Date.now(),
         nodes: [],
         links: []
     };
     let typeGraphData = {
+        hash: Date.now(),
         nodes: [],
         links: []
     };
@@ -243,23 +247,29 @@
             });
         };
 
+        spaces = {};
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
             if (excludedTypes.includes(type.id)) {
                 type.isExcluded = true;
             }
             acc[type.id] = type;
+
+            type.spaces.forEach(space => spaces[space.name] = {name: space.name, enabled: true});
             return acc;
         }, {});
 
         typesList = Object.values(types);
+        spacesList = Object.values(spaces);
 
         enrichTypesLinks();
     };
 
+    const belongsToEnabledSpace = type => !!type.spaces.filter(space => spaces[space.name] && spaces[space.name].enabled).length;
+
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         const target = types[linkTo.targetId];
-        if (target && !target.isExcluded) {
+        if (target && !target.isExcluded && belongsToEnabledSpace(type)) {
             acc.push(target);
         }
         return acc;
@@ -267,7 +277,7 @@
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
         const source = types[linkFrom.sourceId];
-        if (source && !source.isExcluded) {
+        if (source && !source.isExcluded && belongsToEnabledSpace(type)) {
             acc.push(source);
         }
         return acc;
@@ -304,7 +314,7 @@
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    if (ignoreSelectedNode || isNodeEnabled(space.name, type.id)) {
+                    if (spaces[space.name] && spaces[space.name].enabled && (ignoreSelectedNode || isNodeEnabled(space.name, type.id))) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -327,7 +337,10 @@
                 .forEach(link => {
                     if (link.targetId !== type.id && !excludedTypes.includes(link.targetId)) {
                         const targetNode = nodes[link.targetSpace + "/" + link.targetId];
-                        if (targetNode && !targetNode.isExcluded && (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
+                        if (targetNode && 
+                            spaces[targetNode.group] && spaces[targetNode.group].enabled && 
+                            !targetNode.isExcluded && 
+                            (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             sourceNode.linksTo.push(targetNode);
                             targetNode.linksFrom.push(sourceNode);
                             acc.push({
@@ -343,24 +356,32 @@
         }, []);
 
         return {
+            hash: Date.now(),
             nodes: Object.values(nodes),
-            links: links
+            links: links,
         };
     };
 
 
     const buildTypeGraphData = () => {
 
-        const directLinkedToTypes = getLinkedToTypes(selectedType);
-        const directLinkedFromTypes = getLinkedFromTypes(selectedType);
+        let filteredTypesList = [];
+        if (belongsToEnabledSpace(selectedType)) {
 
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
+            const directLinkedToTypes = getLinkedToTypes(selectedType);
+            const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
-        typeGraphData = buildGraphData(typesList, false);
-    }
+            filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
+        }
+
+        typeGraphData = buildGraphData(filteredTypesList, false);
+    };
 
     const buildGlobalGraphData = () => {
-        globalGraphData = buildGraphData(typesList, true);
+
+        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && belongsToEnabledSpace(type));
+
+        globalGraphData = buildGraphData(filteredTypesList, true);
     };
 
     const search = query => {
@@ -470,6 +491,17 @@
         structureStore.notifyChange();
     });
 
+    structureStore.addAction("structure:space_toggle", name => {
+        if (spaces[name]) {
+            spaces[name].enabled = !spaces[name].enabled;
+            buildGlobalGraphData();
+            if (selectedType) {
+                buildTypeGraphData();
+            }
+            structureStore.notifyChange();
+        }
+    });
+
     /**
      * Store public interfaces
      */
@@ -478,10 +510,12 @@
     
     structureStore.addInterface("getSelectedType", () => selectedType);
 
-    structureStore.addInterface("getTypes", types);
+    structureStore.addInterface("getTypes", () => types);
 
-    structureStore.addInterface("getTypesList", typesList);
+    structureStore.addInterface("getTypesList", () => typesList);
 
+    structureStore.addInterface("getSpacesList", () => spacesList);
+    
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 
     structureStore.addInterface("getSearchResults", () => searchResults);

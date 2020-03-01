@@ -30,9 +30,15 @@
         }
 
         kg-search-panel {
-            flex: 1;
+            flex: 4;
             overflow: hidden;
             padding: 0 15px;
+        }
+
+        kg-spaces-toggles {
+            flex: 1;
+            overflow: hidden;
+            padding: 15px 15px 0 15px;
         }
 
     </style>
@@ -41,6 +47,7 @@
           <kg-view-mode></kg-view-mode>
         </div>
         <kg-search-panel></kg-search-panel>
+        <kg-spaces-toggles></kg-spaces-toggles>
         <div>
         </div>
 

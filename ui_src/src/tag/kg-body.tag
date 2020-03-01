@@ -236,7 +236,7 @@
         const maxNodeSize = 60;
 
         this.selectedType = undefined;
-        this.lastUpdate = undefined;
+        this.graphDataHash = undefined;
         this.simulation;
         this.nodes = [];
         this.links = [];
@@ -273,15 +273,16 @@
             if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
-            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
             var self = this;
-            const previousLastUpdate = this.lastUpdate;
-            this.lastUpdate = this.stores.structure.getLastUpdate();
+            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
             const previousSelectedType = this.selectedType;
             this.selectedType = this.stores.structure.getSelectedType();
             var data = this.stores.structure.getGraphData();
             var nodes = data.nodes;
             var links = data.links;
+
+            let previousGraphDataHash = this.graphDataHash;
+            this.graphDataHash = data.hash;
 
             //Calculating the max numberof instance and link values
             //to prepare a scale for the node radius and link width
@@ -294,7 +295,7 @@
                 .domain([1,d3.max(linkValues)])
                 .range([3,maxLinkSize])
 
-            if (!this.svg || this.lastUpdate !== previousLastUpdate || this.selectedType !== previousSelectedType) {
+            if (!this.svg || this.graphDataHash !== previousGraphDataHash) {
                 this.info = "";
                 this.details = "";
                 this.nodes = nodes;

@@ -36459,11 +36459,15 @@ class RiotStore {
 (function () {
     let types = {};
     let typesList = [];
+    let spaces = {};
+    let spacesList = [];
     let globalGraphData = {
+        hash: Date.now(),
         nodes: [],
         links: []
     };
     let typeGraphData = {
+        hash: Date.now(),
         nodes: [],
         links: []
     };
@@ -36685,23 +36689,29 @@ class RiotStore {
             });
         };
 
+        spaces = {};
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
             if (excludedTypes.includes(type.id)) {
                 type.isExcluded = true;
             }
             acc[type.id] = type;
+
+            type.spaces.forEach(space => spaces[space.name] = {name: space.name, enabled: true});
             return acc;
         }, {});
 
         typesList = Object.values(types);
+        spacesList = Object.values(spaces);
 
         enrichTypesLinks();
     };
 
+    const belongsToEnabledSpace = type => !!type.spaces.filter(space => spaces[space.name] && spaces[space.name].enabled).length;
+
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         const target = types[linkTo.targetId];
-        if (target && !target.isExcluded) {
+        if (target && !target.isExcluded && belongsToEnabledSpace(type)) {
             acc.push(target);
         }
         return acc;
@@ -36709,7 +36719,7 @@ class RiotStore {
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
         const source = types[linkFrom.sourceId];
-        if (source && !source.isExcluded) {
+        if (source && !source.isExcluded && belongsToEnabledSpace(type)) {
             acc.push(source);
         }
         return acc;
@@ -36746,7 +36756,7 @@ class RiotStore {
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
                 type.spaces.forEach(space => {
-                    if (ignoreSelectedNode || isNodeEnabled(space.name, type.id)) {
+                    if (spaces[space.name] && spaces[space.name].enabled && (ignoreSelectedNode || isNodeEnabled(space.name, type.id))) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -36769,7 +36779,10 @@ class RiotStore {
                 .forEach(link => {
                     if (link.targetId !== type.id && !excludedTypes.includes(link.targetId)) {
                         const targetNode = nodes[link.targetSpace + "/" + link.targetId];
-                        if (targetNode && !targetNode.isExcluded && (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
+                        if (targetNode && 
+                            spaces[targetNode.group] && spaces[targetNode.group].enabled && 
+                            !targetNode.isExcluded && 
+                            (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
                             sourceNode.linksTo.push(targetNode);
                             targetNode.linksFrom.push(sourceNode);
                             acc.push({
@@ -36785,24 +36798,32 @@ class RiotStore {
         }, []);
 
         return {
+            hash: Date.now(),
             nodes: Object.values(nodes),
-            links: links
+            links: links,
         };
     };
 
 
     const buildTypeGraphData = () => {
 
-        const directLinkedToTypes = getLinkedToTypes(selectedType);
-        const directLinkedFromTypes = getLinkedFromTypes(selectedType);
+        let filteredTypesList = [];
+        if (belongsToEnabledSpace(selectedType)) {
 
-        const typesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
+            const directLinkedToTypes = getLinkedToTypes(selectedType);
+            const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
-        typeGraphData = buildGraphData(typesList, false);
-    }
+            filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
+        }
+
+        typeGraphData = buildGraphData(filteredTypesList, false);
+    };
 
     const buildGlobalGraphData = () => {
-        globalGraphData = buildGraphData(typesList, true);
+
+        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && belongsToEnabledSpace(type));
+
+        globalGraphData = buildGraphData(filteredTypesList, true);
     };
 
     const search = query => {
@@ -36912,6 +36933,17 @@ class RiotStore {
         structureStore.notifyChange();
     });
 
+    structureStore.addAction("structure:space_toggle", name => {
+        if (spaces[name]) {
+            spaces[name].enabled = !spaces[name].enabled;
+            buildGlobalGraphData();
+            if (selectedType) {
+                buildTypeGraphData();
+            }
+            structureStore.notifyChange();
+        }
+    });
+
     /**
      * Store public interfaces
      */
@@ -36920,10 +36952,12 @@ class RiotStore {
     
     structureStore.addInterface("getSelectedType", () => selectedType);
 
-    structureStore.addInterface("getTypes", types);
+    structureStore.addInterface("getTypes", () => types);
 
-    structureStore.addInterface("getTypesList", typesList);
+    structureStore.addInterface("getTypesList", () => typesList);
 
+    structureStore.addInterface("getSpacesList", () => spacesList);
+    
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 
     structureStore.addInterface("getSearchResults", () => searchResults);
@@ -36979,7 +37013,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
         const maxNodeSize = 60;
 
         this.selectedType = undefined;
-        this.lastUpdate = undefined;
+        this.graphDataHash = undefined;
         this.simulation;
         this.nodes = [];
         this.links = [];
@@ -37016,15 +37050,16 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
             if (!this.stores.structure.is("STRUCTURE_LOADED")) {
                 return;
             }
-            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
             var self = this;
-            const previousLastUpdate = this.lastUpdate;
-            this.lastUpdate = this.stores.structure.getLastUpdate();
+            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
             const previousSelectedType = this.selectedType;
             this.selectedType = this.stores.structure.getSelectedType();
             var data = this.stores.structure.getGraphData();
             var nodes = data.nodes;
             var links = data.links;
+
+            let previousGraphDataHash = this.graphDataHash;
+            this.graphDataHash = data.hash;
 
             var nodesNumOfInstances = nodes.map(o => o.occurrences);
             var linkValues = links.map(o => o.occurrences);
@@ -37035,7 +37070,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 .domain([1,d3.max(linkValues)])
                 .range([3,maxLinkSize])
 
-            if (!this.svg || this.lastUpdate !== previousLastUpdate || this.selectedType !== previousSelectedType) {
+            if (!this.svg || this.graphDataHash !== previousGraphDataHash) {
                 this.info = "";
                 this.details = "";
                 this.nodes = nodes;
@@ -37590,7 +37625,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
         };
 });
 
-riot.tag2('kg-filters', '<div> <kg-view-mode></kg-view-mode> </div> <kg-search-panel></kg-search-panel> <div> </div>', 'kg-filters,[data-is="kg-filters"]{ display: flex; flex-direction: column; position: relative; height: 100%; background: #111; color:white; } kg-filters > div,[data-is="kg-filters"] > div{ padding: 15px; } kg-filters kg-search-panel,[data-is="kg-filters"] kg-search-panel{ flex: 1; overflow: hidden; padding: 0 15px; }', '', function(opts) {
+riot.tag2('kg-filters', '<div> <kg-view-mode></kg-view-mode> </div> <kg-search-panel></kg-search-panel> <kg-spaces-toggles></kg-spaces-toggles> <div> </div>', 'kg-filters,[data-is="kg-filters"]{ display: flex; flex-direction: column; position: relative; height: 100%; background: #111; color:white; } kg-filters > div,[data-is="kg-filters"] > div{ padding: 15px; } kg-filters kg-search-panel,[data-is="kg-filters"] kg-search-panel{ flex: 4; overflow: hidden; padding: 0 15px; } kg-filters kg-spaces-toggles,[data-is="kg-filters"] kg-spaces-toggles{ flex: 1; overflow: hidden; padding: 15px 15px 0 15px; }', '', function(opts) {
 });
 
 riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input type="text" ref="query" onkeyup="{doSearch}"> <i class="fa fa-search" aria-hidden="true"></i> </div> <div class="results scroll"> <ul if="{results.length > 0}"> <li each="{type in results}"> <a href="#" onclick="{selectType}" onmouseover="{highlightType}" onmouseout="{unhighlightType}" title="{type.id}">{type.name}</a> <span class="occurrences">{type.occurrences}</span> </li> </ul> <div class="no-results" if="{results.length <= 1 && !!refs.query.value.length}"> No type matches your search! </div> </div> </div>', 'kg-search-panel,[data-is="kg-search-panel"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-search-panel .panel,[data-is="kg-search-panel"] .panel{ display: flex; flex-direction: column; height: 100%; border: 1px solid #444; border-radius: 5px 5px 0 0; } kg-search-panel .searchbox,[data-is="kg-search-panel"] .searchbox{ padding: 15px; } kg-search-panel .searchbox input,[data-is="kg-search-panel"] .searchbox input{ appearance: none; -webkit-appearance: none; width: 100%; padding: 0 8px 0 30px; background: #333; border: #ccc; outline: none; border-radius: 5px; height: 30px; line-height: 30px; color: white; font-size: 16px; } kg-search-panel .searchbox i,[data-is="kg-search-panel"] .searchbox i{ position: absolute; top: 22px; left: 38px; } kg-search-panel .results,[data-is="kg-search-panel"] .results{ flex: 1; padding: 15px; border-top: 1px solid #444; } kg-search-panel .scroll,[data-is="kg-search-panel"] .scroll{ overflow-y: auto; } kg-search-panel .scroll::-webkit-scrollbar-track,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-search-panel .scroll::-webkit-scrollbar,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-search-panel .scroll::-webkit-scrollbar-thumb,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-search-panel ul,[data-is="kg-search-panel"] ul{ margin: 0; padding: 0; list-style: none; font-size: 0.8em; } kg-search-panel li,[data-is="kg-search-panel"] li{ padding: 3px 0; line-height: 1; } kg-search-panel .occurrences,[data-is="kg-search-panel"] .occurrences{ display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; background-color: #444; font-size: 10px; text-align: center; font-weight: bold; line-height: 1.2; } kg-search-panel .no-results,[data-is="kg-search-panel"] .no-results{ font-style:italic; } kg-search-panel .disabled,[data-is="kg-search-panel"] .disabled{ text-decoration: line-through; color:#aaa; }', '', function(opts) {
@@ -37640,6 +37675,27 @@ riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input
         this.unhighlightType = e => {
             RiotPolice.trigger("structure:type_highlight");
         };
+});
+
+riot.tag2('kg-spaces-toggles', '<div class="panel"> <div class="title">Spaces:</div> <div class="scroll"> <ul> <li each="{spaces}"> <div class="space-toggle"> <button class="space-toggle_button {selected: enabled}" onclick="{parent.toggle}"> <i class="fa fa-check"></i> </button> <button class="space-toggle_button {selected: !enabled}" onclick="{parent.toggle}"> <i class="fa fa-close"></i> </button> </div> <span>{name}</span> </li> </ul> </div> </div>', 'kg-spaces-toggles,[data-is="kg-spaces-toggles"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-spaces-toggles .panel,[data-is="kg-spaces-toggles"] .panel{ display: flex; flex-direction: column; height: 100%; } kg-spaces-toggles .title,[data-is="kg-spaces-toggles"] .title{ margin: 0 0 5px 0; padding: 0 0 5px 0; border-bottom: 1px solid #444; } kg-spaces-toggles .scroll,[data-is="kg-spaces-toggles"] .scroll{ flex: 1; overflow-y: auto; } kg-spaces-toggles .scroll::-webkit-scrollbar-track,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-spaces-toggles .scroll::-webkit-scrollbar,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-spaces-toggles .scroll::-webkit-scrollbar-thumb,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-spaces-toggles ul,[data-is="kg-spaces-toggles"] ul{ list-style: none; margin: 0; padding: 0; } kg-spaces-toggles li,[data-is="kg-spaces-toggles"] li{ margin: 5px 0; } kg-spaces-toggles .space-toggle,[data-is="kg-spaces-toggles"] .space-toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-spaces-toggles button.space-toggle_button,[data-is="kg-spaces-toggles"] button.space-toggle_button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-spaces-toggles button.space-toggle_button.selected,[data-is="kg-spaces-toggles"] button.space-toggle_button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-spaces-toggles span,[data-is="kg-spaces-toggles"] span{ padding-left: 3px; }', '', function(opts) {
+        this.spaces = [];
+
+        this.on("mount", () => {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+            this.update();
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
+            this.spaces = this.stores.structure.getSpacesList();
+        });
+
+        this.toggle = e =>  RiotPolice.trigger("structure:space_toggle", e.item.name);
 });
 
 riot.tag2('kg-topbar', '<div class="header"> <div class="header-left"> <img src="img/ebrains.svg" alt="" width="40" height="40"> <div class="title">{AppConfig.title}</div> </div> <div class="header-right" if="{isLoaded}"> <div class="date" if="{date}">KG State at : {date}</div> <button class="refresh" onclick="{refresh}" title="refresh"><i class="fa fa-refresh"></i></button> </div> </div>', 'kg-topbar,[data-is="kg-topbar"]{ display:block; } kg-topbar .title,[data-is="kg-topbar"] .title{ margin-left:10px; font-size: 20px; font-weight: 700; color: white; } kg-topbar .date,[data-is="kg-topbar"] .date{ height:100%; margin-right:10px; } kg-topbar .btn,[data-is="kg-topbar"] .btn{ width:20px; height:20px; } kg-topbar .menu,[data-is="kg-topbar"] .menu{ transition: all 0.3s ease 0s; padding: 10px 10px 10px 10px; } kg-topbar .menu:hover,[data-is="kg-topbar"] .menu:hover{ background-color: #3e3e3e; border-radius:2px; cursor: pointer; color:#3498db; } kg-topbar .header-left,[data-is="kg-topbar"] .header-left{ display:flex; align-items:center; justify-content:left; margin-left:20px; } kg-topbar .header-right,[data-is="kg-topbar"] .header-right{ color:white; display:flex; align-items:center; margin-right:20px; } kg-topbar .header,[data-is="kg-topbar"] .header{ display:flex; align-items:center; justify-content: space-between; height:var(--topbar-height); } kg-topbar button.refresh,[data-is="kg-topbar"] button.refresh{ margin: 0; padding: 8px 10px; border: 0; border-radius: 0; background-color: transparent; color: #c9cccf; font-size: 1em; text-align: center; transition: color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-topbar button.refresh:hover,[data-is="kg-topbar"] button.refresh:hover{ box-shadow: 3px 3px 6px black; background-color: transparent; color: white; }', '', function(opts) {
