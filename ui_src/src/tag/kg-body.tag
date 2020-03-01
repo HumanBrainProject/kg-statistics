@@ -318,7 +318,7 @@
                 this.svg.selectAll(".related-to-type_" + this.selectedType.hash).classed("selectedRelation", true);
                 this.svg.selectAll(".is-type_" + this.selectedType.hash).classed("selectedNode", true);
             } else {
-                if (this.selectedType !== undefined) {
+                if (this.selectedType) {
                     this.resetView();
                 }
                 this.selectedType = undefined;
@@ -326,14 +326,22 @@
                 this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
-            const newHighlightedType = this.stores.structure.is("TYPE_HIGHLIGHTED") && this.stores.structure.getHighlightedType();
+            const newHighlightedType = this.stores.structure.getHighlightedType();
             if (newHighlightedType) {
+                if (newHighlightedType !== this.highlightedType) {
+                    this.info = newHighlightedType.name;
+                    this.details = newHighlightedType.id;
+                }
                 this.highlightedType = newHighlightedType;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
                 this.svg.selectAll(".related-to-type_" + this.highlightedType.hash).classed("highlightedRelation", true);
                 this.svg.selectAll(".is-type_" + this.highlightedType.hash).classed("highlightedNode", true);
             } else {
+                if (this.highlightedType) {
+                    this.info = "";
+                    this.details = "";
+                }
                 this.highlightedType = undefined;
                 this.svg.selectAll(".highlightedNode").classed("highlightedNode", false);
                 this.svg.selectAll(".highlightedRelation").classed("highlightedRelation", false);
