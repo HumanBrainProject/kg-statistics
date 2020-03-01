@@ -35,6 +35,7 @@
     let highlightedType;
     let searchQuery = "";
     let searchResults = [];
+    let showProvenanceLinks = true;
     let showIntraSpaceLinks = false;
     let showExtraSpaceLinks = true;
     
@@ -125,12 +126,12 @@
             }
             type.properties = type.properties.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
             const linksTo = type.properties.reduce((acc, property) => {
-                const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                const isProvenance = property.id.startsWith(AppConfig.structure.provenance);
                 if (excludedPropertiesForLinks.includes(property.name)) {
                     property.excludeLinks = true;
                 }
                 property.targetTypes.forEach(targetType => {
-                    targetType.provenance = provenance;
+                    targetType.isProvenance = isProvenance;
                     const target = types[targetType.id];
                     if (target) {
                         targetType.name = target.name;
@@ -147,7 +148,7 @@
                                 occurrences: 0,
                                 targetId: targetType.id,
                                 targetName: targetType.name,
-                                provenance: provenance
+                                isProvenance: isProvenance
                             }
                             if (targetType.isExcluded) {
                                 acc[targetType.id].isExcluded = true;
@@ -157,7 +158,7 @@
                             }
                         }
                         acc[targetType.id].occurrences += targetType.occurrences;
-                        acc[targetType.id].provenance = provenance && acc[targetType.id].provenance;
+                        acc[targetType.id].isProvenance = isProvenance && acc[targetType.id].isProvenance;
                     }
                 });
                 property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
@@ -173,12 +174,12 @@
                     spaceFrom.properties = spaceFrom.properties.filter(property => !excludedProperties.includes(property.name));
                 }
                 spaceFrom.properties.forEach(property => {
-                    const provenance = property.id.startsWith(AppConfig.structure.provenance);
+                    const isProvenance = property.id.startsWith(AppConfig.structure.provenance);
                     if (excludedPropertiesForLinks.includes(property.name)) {
                         property.excludeLinks = true;
                     }
                     property.targetTypes.forEach(targetType => {
-                        targetType.provenance = provenance;
+                        targetType.isProvenance = isProvenance;
                         const target = types[targetType.id];
                         if (target) {
                             targetType.name = target.name;
@@ -198,7 +199,7 @@
                                     targetId: targetType.id,
                                     targetHash: targetType.hash,
                                     targetName: targetType.name,
-                                    provenance: provenance
+                                    isProvenance: isProvenance
                                 };
                                 if (targetType.isExcluded) {
                                     link.isExcluded = true;
@@ -302,9 +303,10 @@
 
         const enabledNodes = {};
 
-        const addRelation = (sourceSpace, sourceId, targetSpace, targetId) => {
+        const addRelation = (sourceSpace, sourceId, targetSpace, targetId, isProvenance) => {
             if ((ignoreSelectedNode || (selectedType && (selectedType.id === sourceId || selectedType.id === targetId))) &&
-                ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace))) {
+                ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace)) &&
+                (showProvenanceLinks || !isProvenance)) {
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
                 enabledNodes[targetSpace + "/" + targetId] =  true;
             }
@@ -312,7 +314,7 @@
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId)));
+        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
 
         const nodes = typesList.reduce((acc, type) => {
             if (!excludedTypes.includes(type.id)) {
@@ -338,7 +340,7 @@
             const type = sourceNode.type;
             type.spacesLinksTo
                 .forEach(link => {
-                    if (link.targetId !== type.id && !excludedTypes.includes(link.targetId)) {
+                    if (link.targetId !== type.id && !excludedTypes.includes(link.targetId) && (showProvenanceLinks || !link.isProvenance)) {
                         const targetNode = nodes[link.targetSpace + "/" + link.targetId];
                         if (targetNode && 
                             isSpaceEnabled(targetNode.group) && 
@@ -351,7 +353,7 @@
                                 occurrences: link.occurrences,
                                 source: sourceNode,
                                 target: targetNode,
-                                provenance: link.provenance
+                                isProvenance: link.isProvenance
                             });
                         }
                     }
@@ -399,13 +401,16 @@
     };
 
     const init = () => {
+        structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
     };
 
     const reset = () => {
+        showProvenanceLinks = true;
         showIntraSpaceLinks = false;
         showExtraSpaceLinks = true;
+        structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
         spacesList.forEach(space => space.enabled = true);
@@ -415,7 +420,7 @@
         [
             "STRUCTURE_LOADING", "STRUCTURE_ERROR", "STRUCTURE_LOADED",
             "TYPE_SELECTED", "TYPE_HIGHLIGHTED",
-            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "INTRA_SPACE_LINKS_SHOW", "EXTRA_SPACE_LINKS_SHOW"
+            "TYPE_DETAILS_SHOW", "STAGE_RELEASED", "INTRA_SPACE_LINKS_SHOW", "EXTRA_SPACE_LINKS_SHOW", "PROVENANCE_LINKS_SHOW"
         ],
         init, reset);
 
@@ -526,6 +531,16 @@
             }
             structureStore.notifyChange();
         }
+    });
+
+    structureStore.addAction("structure:provenance_links_toggle", () => {
+        showProvenanceLinks = !showProvenanceLinks;
+        structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
+        buildGlobalGraphData();
+        if (selectedType) {
+            buildTypeGraphData();
+        }
+        structureStore.notifyChange();
     });
 
     structureStore.addAction("structure:space_intra_links_toggle", () => {

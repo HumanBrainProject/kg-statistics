@@ -29,6 +29,10 @@
           padding: 15px;
         }
 
+        :scope > div > * + * {
+          padding-top: 5px;
+        }
+
         kg-search-panel {
             flex: 4;
             overflow: hidden;
@@ -49,6 +53,7 @@
         <kg-search-panel></kg-search-panel>
         <kg-spaces-toggles></kg-spaces-toggles>
         <div>
+          <kg-provenance-toggle></kg-provenance-toggle>
           <kg-intra-space-links-toggle></kg-intra-space-links-toggle>
           <kg-extra-space-links-toggle></kg-extra-space-links-toggle>
         </div>

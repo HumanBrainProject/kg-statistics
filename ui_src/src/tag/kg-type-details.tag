@@ -286,7 +286,7 @@
                                     <span if={property.excludeLinks} class={targetType.isUnknown?"broken-link":""} title={"links are not available in the graph for property " + property.name}><i class={"fa " + (targetType.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span>
                                     <span if={!property.excludeLinks && targetType.isExcluded} class={targetType.isUnknown?"broken-link":""} title={"type " + targetType.id + " is not available in the graph"}><i class={"fa " + (targetType.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{targetType.name}</span></span>
                                     <span if={!property.excludeLinks && !targetType.isExcluded && targetType.isUnknown} class={targetType.isUnknown?"broken-link":""} title={targetType.id + " is an unknown link"}><i class="fa fa-unlink"></i>{targetType.name}</span>
-                                    <span if={!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}><i class={"fa " + (targetType.provenance?"fa-flag":"fa-long-arrow-right")}></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlightTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a></span>
+                                    <span if={!property.excludeLinks && !targetType.isExcluded && !targetType.isUnknown}><i class={"fa " + (targetType.isProvenance?"fa-flag":"fa-long-arrow-right")}></i><a href="#" onmouseover={highlightTarget} onmouseout={unhighlightTarget} onclick={selectTarget} title={targetType.id}>{targetType.name}</a></span>
                                 </li>
                             </ul>
                         </div>
@@ -301,7 +301,7 @@
                     <li each={linkTo in selectedType.linksTo} title={linkTo.targetId}>
                         <span if={linkTo.isUnknown} title={linkTo.targetId + " is an unknown link"}><i class="fa fa-unlink"></i>{linkTo.targetName}</span>
                         <span if={!linkTo.isUnknown && linkTo.isExcluded} class={linkTo.isUnknown?"broken-link":""} title={"type " + linkTo.targetId + " is not available in the graph"}><i class={"fa " + (linkTo.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{linkTo.targetName}</span></span>
-                        <span if={!linkTo.isUnknown && !linkTo.isExcluded}><i class={"fa " + (linkTo.provenance?"fa-flag":"fa-long-arrow-right")}></i><a href="#" onmouseover={highlightLinkTo} onmouseout={unhighlightLinkTo} onclick={selectLinkTo} title={linkTo.targetId}>{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span>
+                        <span if={!linkTo.isUnknown && !linkTo.isExcluded}><i class={"fa " + (linkTo.isProvenance?"fa-flag":"fa-long-arrow-right")}></i><a href="#" onmouseover={highlightLinkTo} onmouseout={unhighlightLinkTo} onclick={selectLinkTo} title={linkTo.targetId}>{linkTo.targetName}</a><span class="occurrences">{linkTo.occurrences}</span></span>
                     </li>
                 </ul>
             </div>
@@ -313,7 +313,7 @@
                     <li each={linkFrom in selectedType.linksFrom} title={linkFrom.sourceId}>
                         <span if={linkFrom.isUnknown} title={linkFrom.sourceId + " is an unknown link"}><i class="fa fa-unlink"></i>{linkFrom.sourceName}</span>
                         <span if={!linkFrom.isUnknown && linkFrom.isExcluded} class={linkFrom.isUnknown?"broken-link":""} title={"type " + linkFrom.sourceId + " is not available in the graph"}><i class={"fa " + (linkFrom.isUnknown?"fa-unlink":"fa-ban")}></i>&nbsp;<span class="link-disabled">{linkFrom.sourceName}</span></span>
-                        <span if={!linkFrom.isUnknown && !linkFrom.isExcluded}><i class={"fa " + (linkFrom.provenance?"fa-flag":"fa-long-arrow-left")}></i><a href="#" onmouseover={highlightLinkFrom} onmouseout={unhighlightLinkFrom} onclick={selectLinkFrom} title={linkFrom.sourceId}>{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span>
+                        <span if={!linkFrom.isUnknown && !linkFrom.isExcluded}><i class={"fa " + (linkFrom.isProvenance?"fa-flag":"fa-long-arrow-left")}></i><a href="#" onmouseover={highlightLinkFrom} onmouseout={unhighlightLinkFrom} onclick={selectLinkFrom} title={linkFrom.sourceId}>{linkFrom.sourceName}</a><span class="occurrences">{linkFrom.occurrences}</span></span>
                     </li>
                 </ul>
             </div>

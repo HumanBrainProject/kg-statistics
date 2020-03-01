@@ -38,7 +38,7 @@
             transition: stroke 0.5s ease-out, fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out;
         }
 
-        .link-line.provenance{
+        .link-line.is-provenance{
             stroke-dasharray: 3;
             stroke: rgba(255, 245, 162, 0.5);
         }
@@ -55,7 +55,7 @@
             transition: fill-opacity 0.5s ease-out, stroke-opacity 0.5s ease-out;
         }
 
-         .link-node__circle.provenance{
+         .link-node__circle.is-provenance{
             fill: #fff5a2;
          }
 
@@ -535,7 +535,7 @@
                     //$linkLine.classed("related-to-group_" + d.source.group, true);
                     //$linkLine.classed("related-to-group_" + d.target.group, true);
                     $linkLine.classed("related-to-link_" + d.source.hash + "-" + d.target.hash, true);
-                    $linkLine.classed("provenance", d.provenance)
+                    $linkLine.classed("is-provenance", d.isProvenance)
                 })
                 .attr("stroke-width", d => linkRscale(d.occurrences))
                 .on("mouseover", d => {
@@ -569,7 +569,7 @@
                         $linkNode.append("circle")
                             .attr("class", "link-node__circle")
                             .attr("r", 10)
-                            .classed("provenance", d.provenance);
+                            .classed("is-provenance", d.isProvenance);
 
                         $linkNode.append("text")
                             .attr("class", "link-node__text")
