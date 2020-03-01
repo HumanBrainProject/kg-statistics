@@ -447,7 +447,7 @@
                     selectedType = undefined;
                     buildTypes(data);
                     search();
-                    showIntraSpaceLinks = true;
+                    showIntraSpaceLinks = false;
                     showExtraSpaceLinks = true;
                     structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
                     structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);

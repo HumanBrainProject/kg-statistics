@@ -36889,7 +36889,7 @@ class RiotStore {
                     selectedType = undefined;
                     buildTypes(data);
                     search();
-                    showIntraSpaceLinks = true;
+                    showIntraSpaceLinks = false;
                     showExtraSpaceLinks = true;
                     structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
                     structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
@@ -37711,7 +37711,7 @@ riot.tag2('kg-filters', '<div> <kg-view-mode></kg-view-mode> </div> <kg-search-p
 });
 
 riot.tag2('kg-intra-space-links-toggle', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: showIntraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !showIntraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-close"></i> </button> </div> <span>show intra-space links</span> </div>', 'kg-intra-space-links-toggle,[data-is="kg-intra-space-links-toggle"]{ display:block; color: white; } kg-intra-space-links-toggle .group-view__toggle,[data-is="kg-intra-space-links-toggle"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-intra-space-links-toggle button.group-view__toggle__button,[data-is="kg-intra-space-links-toggle"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-intra-space-links-toggle button.group-view__toggle__button.selected,[data-is="kg-intra-space-links-toggle"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-intra-space-links-toggle span,[data-is="kg-intra-space-links-toggle"] span{ padding-left: 3px; }', '', function(opts) {
-        this.showIntraSpaceLinks = true;
+        this.showIntraSpaceLinks = false;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
