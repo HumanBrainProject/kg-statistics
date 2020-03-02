@@ -36461,7 +36461,7 @@ class RiotStore {
     let typesList = [];
     let spaces = {};
     let spacesList = [];
-    let globalGraphData = {
+    let overviewGraphData = {
         hash: Date.now(),
         nodes: [],
         links: []
@@ -36741,12 +36741,12 @@ class RiotStore {
     };
 
 
-    const buildGraphData = (typesList, ignoreSelectedNode) => {
+    const buildGraphData = typesList => {
 
         const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId, isProvenance) => {
-            if ((ignoreSelectedNode || (selectedType && (selectedType.id === sourceId || selectedType.id === targetId))) &&
+            if ((selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) &&
                 ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace)) &&
                 (showProvenanceLinks || !isProvenance)) {
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
@@ -36787,8 +36787,7 @@ class RiotStore {
                         if (targetNode && 
                             isSpaceEnabled(targetNode.group) && 
                             !targetNode.isExcluded &&
-                            ((showIntraSpaceLinks && sourceNode.group === targetNode.group) || (showExtraSpaceLinks && sourceNode.group !== targetNode.group)) &&
-                            (!ignoreSelectedNode || sourceNode.group !== targetNode.group)) {
+                            ((showIntraSpaceLinks && sourceNode.group === targetNode.group) || (showExtraSpaceLinks && sourceNode.group !== targetNode.group))) {
                             sourceNode.linksTo.push(targetNode);
                             targetNode.linksFrom.push(sourceNode);
                             acc.push({
@@ -36822,14 +36821,14 @@ class RiotStore {
             filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
         }
 
-        typeGraphData = buildGraphData(filteredTypesList, false);
+        typeGraphData = buildGraphData(filteredTypesList);
     };
 
-    const buildGlobalGraphData = () => {
+    const buildOverviewGraphData = () => {
 
         const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && typeBelongsToEnabledSpace(type));
 
-        globalGraphData = buildGraphData(filteredTypesList, true);
+        overviewGraphData = buildGraphData(filteredTypesList);
     };
 
     const search = query => {
@@ -36893,7 +36892,7 @@ class RiotStore {
                     showExtraSpaceLinks = true;
                     structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
                     structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-                    buildGlobalGraphData();
+                    buildOverviewGraphData();
                     structureStore.toggleState("STRUCTURE_LOADED", true);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
                     structureStore.notifyChange();
@@ -36934,7 +36933,7 @@ class RiotStore {
                 showExtraSpaceLinks = true;
                 structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
                 structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-                buildGlobalGraphData();
+                buildOverviewGraphData();
             }
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
@@ -36967,7 +36966,7 @@ class RiotStore {
     structureStore.addAction("structure:space_toggle", name => {
         if (spaces[name]) {
             spaces[name].enabled = !spaces[name].enabled;
-            buildGlobalGraphData();
+            buildOverviewGraphData();
             if (selectedType) {
                 buildTypeGraphData();
             }
@@ -36978,7 +36977,7 @@ class RiotStore {
     structureStore.addAction("structure:provenance_links_toggle", () => {
         showProvenanceLinks = !showProvenanceLinks;
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
-        buildGlobalGraphData();
+        buildOverviewGraphData();
         if (selectedType) {
             buildTypeGraphData();
         }
@@ -36988,7 +36987,7 @@ class RiotStore {
     structureStore.addAction("structure:space_intra_links_toggle", () => {
         showIntraSpaceLinks = !showIntraSpaceLinks;
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-        buildGlobalGraphData();
+        buildOverviewGraphData();
         if (selectedType) {
             buildTypeGraphData();
         }
@@ -36998,7 +36997,7 @@ class RiotStore {
     structureStore.addAction("structure:space_extra_links_toggle", () => {
         showExtraSpaceLinks = !showExtraSpaceLinks;
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-        buildGlobalGraphData();
+        buildOverviewGraphData();
         if (selectedType) {
             buildTypeGraphData();
         }
@@ -37025,7 +37024,7 @@ class RiotStore {
 
     structureStore.addInterface("getHighlightedType", () => highlightedType);
 
-    structureStore.addInterface("getGraphData", () => selectedType?typeGraphData:globalGraphData);
+    structureStore.addInterface("getGraphData", () => selectedType?typeGraphData:overviewGraphData);
 
     RiotPolice.registerStore(structureStore);
 })();
