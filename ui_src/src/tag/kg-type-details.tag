@@ -324,7 +324,6 @@
     </div>
     <div class="no-selection" if={!selectedType}>
         <p>Select a type on the graph or on the search panel to display its properties</p>
-        <p><i>When no type is selected only links between types belonging to differents spaces are displayed</i></p>
     </div>
 
     <script>
