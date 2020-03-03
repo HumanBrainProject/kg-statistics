@@ -36639,7 +36639,6 @@ class RiotStore {
                                     sourceSpace: spaceFrom.name,
                                     targetSpace: spaceTo.name,
                                     targetId: targetType.id,
-                                    targetHash: targetType.hash,
                                     targetName: targetType.name,
                                     isProvenance: isProvenance
                                 };
@@ -36782,7 +36781,8 @@ class RiotStore {
             const type = sourceNode.type;
             type.spacesLinksTo
                 .forEach(link => {
-                    if (link.targetId !== type.id && !excludedTypes.includes(link.targetId) && (showProvenanceLinks || !link.isProvenance)) {
+                    if (link.sourceSpace === sourceNode.group &&
+                        link.targetId !== type.id && !excludedTypes.includes(link.targetId) && (showProvenanceLinks || !link.isProvenance)) {
                         const targetNode = nodes[link.targetSpace + "/" + link.targetId];
                         if (targetNode && 
                             isSpaceEnabled(targetNode.group) && 
