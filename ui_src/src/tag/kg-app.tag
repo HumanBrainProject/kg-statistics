@@ -75,7 +75,7 @@
             left:0;
         }
 
-        .kg-side-panel{
+        kg-side-panel{
             position:absolute;
             width:var(--sidebar-width);
             height:calc(100vh - var(--topbar-height));
@@ -200,56 +200,11 @@
             color: white;
         }
 
-
-        .kg-side-panel button.tab-btn {
-            width: 40px;
-            height: 40px;
-            line-height: 40px;
-            background: #222;
-            border-radius: 10px 0 0 10px;
-            appearance: none;
-            -webkit-appearance: none;
-            border: none;
-            outline: none;
-            font-size: 20px;
-            color: #ccc;
-            padding: 0;
-            margin: 0;
-            text-align:center;
-        }
-
-        .kg-side-panel button.tab-btn.is-active {
-            background: #111;
-        }
-
-        .kg-side-panel button.tab-btn.show-search-btn {
-            position: absolute;
-            top: 10px;
-            left: -40px;
-            border-radius: 10px 0 0 0;
-        }
-
-        .kg-side-panel button.tab-btn.show-type-details-btn {
-            position: absolute;
-            top: 50px;
-            left: -40px;
-            border-radius: 0 0 0 10px;
-        }
-
     </style>
     <div class="kg-app-container ">
         <kg-topbar></kg-topbar>
         <kg-body if={isLoaded}></kg-body>
-        <div class="kg-side-panel" if={isLoaded}>
-            <button class={"tab-btn show-search-btn " + (isTypeDetailsVisible?"":"is-active")} onclick={showSearch}>
-                <i class="fa fa-search" aria-hidden="true"></i>
-            </button>
-            <button class={"tab-btn show-type-details-btn " + (isTypeDetailsVisible?"is-active":"")} onclick={showTypeDetails}>
-                <i class="fa fa-info" aria-hidden="true"></i>
-            </button>
-            <kg-filters if={!isTypeDetailsVisible}></kg-filters>
-            <kg-type-details if={isTypeDetailsVisible}></kg-type-details>
-        </div>
+        <kg-side-panel if={isLoaded}></kg-side-panel>
         <div class="loading-panel {show: isLoading}">
             <span class="loading-spinner">
                 <img src="img/ebrains.svg" alt="loading..." />
@@ -268,13 +223,12 @@
         this.hasError = false;
         this.isLoading = false;
         this.isLoaded = false;
-        this.isTypeDetailsVisible = false;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
             RiotPolice.trigger("structure:load");
-            this.isTypeDetailsVisible = this.stores.structure.is("TYPE_DETAILS_SHOW");
         });
 
         this.on("unmount", () => {
@@ -286,16 +240,7 @@
             this.hasError = this.stores.structure.is("STRUCTURE_ERROR");
             this.isLoading = this.stores.structure.is("STRUCTURE_LOADING");
             this.isLoaded = this.stores.structure.is("STRUCTURE_LOADED");
-            this.isTypeDetailsVisible = this.stores.structure.is("TYPE_DETAILS_SHOW");
         });
-
-        this.showSearch = () => {
-            RiotPolice.trigger("structure:type_details_show", false);
-        };
-
-        this.showTypeDetails = () => {
-            RiotPolice.trigger("structure:type_details_show", true);
-        };
 
         this.retry = e => RiotPolice.trigger("structure:load");
     </script>

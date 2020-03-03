@@ -32,7 +32,7 @@
     let selectedType = undefined;
     let lastUpdate = undefined;
     let releasedStage = false;
-    let highlightedType;
+    let highlightedType = undefined;
     let searchQuery = "";
     let searchResults = [];
     let showProvenanceLinks = true;
@@ -406,9 +406,16 @@
     };
 
     const reset = () => {
+        selectedType = undefined;
+        lastUpdate = undefined;
+        releasedStage = false;
+        highlightedType = undefined;
         showProvenanceLinks = true;
         showIntraSpaceLinks = false;
         showExtraSpaceLinks = true;
+        structureStore.toggleState("TYPE_SELECTED", !!selectedType);
+        structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
+        structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
@@ -431,7 +438,7 @@
         releasedStage  = !releasedStage;
         structureStore.toggleState("STAGE_RELEASED", releasedStage);
         structureStore.notifyChange();
-        RiotPolice.trigger("structure:load")
+        RiotPolice.trigger("structure:load");
     });
 
     structureStore.addAction("structure:load", () => {
@@ -444,12 +451,16 @@
                 .then(data => {
                     lastUpdate = new Date();
                     selectedType = undefined;
+                    highlightedType = undefined;
                     buildTypes(data);
                     search();
                     showIntraSpaceLinks = false;
                     showExtraSpaceLinks = true;
                     structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
                     structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
+                    structureStore.toggleState("TYPE_SELECTED", !!selectedType);
+                    structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
+                    structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
                     buildOverviewGraphData();
                     structureStore.toggleState("STRUCTURE_LOADED", true);
                     structureStore.toggleState("STRUCTURE_LOADING", false);

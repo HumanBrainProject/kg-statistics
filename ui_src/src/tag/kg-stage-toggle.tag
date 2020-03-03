@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-view-mode>
+<kg-stage-toggle>
     <style scoped>
         :scope{
             display:block;
@@ -91,4 +91,4 @@
 
         this.toggle = () => RiotPolice.trigger("structure:stage_toggle");
     </script>
-</kg-view-mode>
+</kg-stage-toggle>

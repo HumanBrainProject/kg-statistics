@@ -14,48 +14,42 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-filters>
+<kg-side-panel>
     <style scoped>
-         :scope {
+        :scope{
+            position: relative;
+            width: 100%;
+            height:100%;
             display: flex;
             flex-direction: column;
-            position: relative;
-            height: 100%;
+            padding: 15px;
             background: #111;
             color:white;
         }
 
-        :scope > div {
-          padding: 15px;
+        :scope > * + * {
+            padding-top: 6px;
         }
-
-        :scope > div > * + * {
-          padding-top: 5px;
-        }
-
-        kg-search-panel {
-            flex: 4;
+        
+        kg-tabs {
+            flex: 3;
             overflow: hidden;
-            padding: 0 15px;
+            padding: 15px 0 0 0;
         }
 
         kg-spaces-toggles {
             flex: 1;
             overflow: hidden;
-            padding: 15px 15px 0 15px;
+            padding: 15px 0 9px 0;
         }
 
     </style>
 
-        <div>
-          <kg-view-mode></kg-view-mode>
-        </div>
-        <kg-search-panel></kg-search-panel>
-        <kg-spaces-toggles></kg-spaces-toggles>
-        <div>
-          <kg-provenance-toggle></kg-provenance-toggle>
-          <kg-intra-space-links-toggle></kg-intra-space-links-toggle>
-          <kg-extra-space-links-toggle></kg-extra-space-links-toggle>
-        </div>
+    <kg-stage-toggle></kg-stage-toggle>
+    <kg-tabs></kg-tabs>
+    <kg-spaces-toggles></kg-spaces-toggles>
+    <kg-provenance-toggle></kg-provenance-toggle>
+    <kg-intra-space-links-toggle></kg-intra-space-links-toggle>
+    <kg-extra-space-links-toggle></kg-extra-space-links-toggle>
 
-</kg-filters>
+</kg-side-panel>

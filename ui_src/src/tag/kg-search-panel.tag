@@ -55,7 +55,7 @@
 
         .searchbox i {
             position: absolute;
-            top: 22px;
+            top: 37px;
             left: 38px;
         }
 

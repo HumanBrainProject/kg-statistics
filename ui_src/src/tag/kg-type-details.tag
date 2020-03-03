@@ -213,28 +213,31 @@
         }
         .actions{
             position:absolute;
-            top:15px;
-            right:15px;
+            top:1px;
+            right:1px;
         }
         .actions button{
             display:block;
             width:40px;
             height:40px;
             line-height: 40px;
-            background: #222;
+            background: transparent;
             appearance: none;
             -webkit-appearance: none;
             border: none;
             outline: none;
             font-size: 20px;
-            color: #ccc;
+            color: #c9cccf;
             padding: 0;
             margin: 0;
             text-align:center;
             border-bottom:1px solid #111;
+            transition: color 0.2s ease-in, box-shadow 0.2s ease-in;
         }
         .actions button:hover{
-            background: #333;
+            background: transparent;
+            color: white;
+            box-shadow: 3px 3px 6px black;
         }
 
         .actions button:first-child{
