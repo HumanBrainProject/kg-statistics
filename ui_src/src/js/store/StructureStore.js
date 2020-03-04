@@ -21,11 +21,13 @@
     let spacesList = [];
     let overviewGraphData = {
         hash: Date.now(),
+        spaces: [],
         nodes: [],
         links: []
     };
     let typeGraphData = {
         hash: Date.now(),
+        spaces: [],
         nodes: [],
         links: []
     };
@@ -114,7 +116,6 @@
                 properties: simplifyPropertiesSemeantics(space["https://kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
-        type.hash = hashCode(type.id);
         return type;
     };
 
@@ -252,6 +253,8 @@
         spaces = {};
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
+            type.hash = hashCode(type.id);
+            type.isProvenance = type.id.startsWith(AppConfig.structure.provenance);
             if (excludedTypes.includes(type.id)) {
                 type.isExcluded = true;
             }
@@ -300,12 +303,15 @@
 
     const buildGraphData = typesList => {
 
+        const availableSpaces = {};
         const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId, isProvenance) => {
-            if ((selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) &&
+            if ((selectedType.id === sourceId || selectedType.id === targetId) &&
                 ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace)) &&
                 (showProvenanceLinks || !isProvenance)) {
+                availableSpaces[sourceSpace] = spaces[sourceSpace];
+                availableSpaces[targetSpace] = spaces[targetSpace];
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
                 enabledNodes[targetSpace + "/" + targetId] =  true;
             }
@@ -313,10 +319,10 @@
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
+        typesList.forEach(type => selectedType && type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
 
         const nodes = typesList.reduce((acc, type) => {
-            if (!excludedTypes.includes(type.id)) {
+            if (typeBelongsToEnabledSpace(type)) {
                 type.spaces.forEach(space => {
                     if (isSpaceEnabled(space.name) && isNodeEnabled(space.name, type.id)) {
                         acc[space.name + "/" + type.id] = {
@@ -362,6 +368,7 @@
 
         return {
             hash: Date.now(),
+            availableSpaces: selectedType?Object.values(availableSpaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0)):spacesList,
             nodes: Object.values(nodes),
             links: links,
         };
@@ -384,7 +391,7 @@
 
     const buildOverviewGraphData = () => {
 
-        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && typeBelongsToEnabledSpace(type));
+        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded);
 
         overviewGraphData = buildGraphData(filteredTypesList);
     };
@@ -585,7 +592,7 @@
 
     structureStore.addInterface("getTypesList", () => typesList);
 
-    structureStore.addInterface("getSpacesList", () => spacesList);
+    structureStore.addInterface("getAvailableSpacesList", () => selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces);
     
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 

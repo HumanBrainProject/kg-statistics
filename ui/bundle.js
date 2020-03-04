@@ -36463,11 +36463,13 @@ class RiotStore {
     let spacesList = [];
     let overviewGraphData = {
         hash: Date.now(),
+        spaces: [],
         nodes: [],
         links: []
     };
     let typeGraphData = {
         hash: Date.now(),
+        spaces: [],
         nodes: [],
         links: []
     };
@@ -36556,7 +36558,6 @@ class RiotStore {
                 properties: simplifyPropertiesSemeantics(space["https://kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
-        type.hash = hashCode(type.id);
         return type;
     };
 
@@ -36694,6 +36695,8 @@ class RiotStore {
         spaces = {};
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
+            type.hash = hashCode(type.id);
+            type.isProvenance = type.id.startsWith(AppConfig.structure.provenance);
             if (excludedTypes.includes(type.id)) {
                 type.isExcluded = true;
             }
@@ -36742,12 +36745,15 @@ class RiotStore {
 
     const buildGraphData = typesList => {
 
+        const availableSpaces = {};
         const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId, isProvenance) => {
-            if ((selectedType && (selectedType.id === sourceId || selectedType.id === targetId)) &&
+            if ((selectedType.id === sourceId || selectedType.id === targetId) &&
                 ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace)) &&
                 (showProvenanceLinks || !isProvenance)) {
+                availableSpaces[sourceSpace] = spaces[sourceSpace];
+                availableSpaces[targetSpace] = spaces[targetSpace];
                 enabledNodes[sourceSpace + "/" + sourceId] =  true;
                 enabledNodes[targetSpace + "/" + targetId] =  true;
             }
@@ -36755,10 +36761,10 @@ class RiotStore {
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
+        typesList.forEach(type => selectedType && type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
 
         const nodes = typesList.reduce((acc, type) => {
-            if (!excludedTypes.includes(type.id)) {
+            if (typeBelongsToEnabledSpace(type)) {
                 type.spaces.forEach(space => {
                     if (isSpaceEnabled(space.name) && isNodeEnabled(space.name, type.id)) {
                         acc[space.name + "/" + type.id] = {
@@ -36804,6 +36810,7 @@ class RiotStore {
 
         return {
             hash: Date.now(),
+            availableSpaces: selectedType?Object.values(availableSpaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0)):spacesList,
             nodes: Object.values(nodes),
             links: links,
         };
@@ -36826,7 +36833,7 @@ class RiotStore {
 
     const buildOverviewGraphData = () => {
 
-        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded && typeBelongsToEnabledSpace(type));
+        const filteredTypesList = typesList.filter(type  =>  !type.isExcluded);
 
         overviewGraphData = buildGraphData(filteredTypesList);
     };
@@ -37027,7 +37034,7 @@ class RiotStore {
 
     structureStore.addInterface("getTypesList", () => typesList);
 
-    structureStore.addInterface("getSpacesList", () => spacesList);
+    structureStore.addInterface("getAvailableSpacesList", () => selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces);
     
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 
@@ -37757,7 +37764,7 @@ riot.tag2('kg-provenance-toggle', '<div> <div class="group-view__toggle"> <butto
         this.toggle = () => RiotPolice.trigger("structure:provenance_links_toggle");
 });
 
-riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input type="text" ref="query" onkeyup="{doSearch}"> <i class="fa fa-search" aria-hidden="true"></i> </div> <div class="results scroll"> <ul if="{results.length > 0}"> <li each="{type in results}"> <a href="#" onclick="{selectType}" onmouseover="{highlightType}" onmouseout="{unhighlightType}" title="{type.id}">{type.name}</a> <span class="occurrences">{type.occurrences}</span> </li> </ul> <div class="no-results" if="{results.length <= 1 && !!refs.query.value.length}"> No type matches your search! </div> </div> </div>', 'kg-search-panel,[data-is="kg-search-panel"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-search-panel .panel,[data-is="kg-search-panel"] .panel{ display: flex; flex-direction: column; height: 100%; border: 1px solid #444; border-radius: 5px 5px 0 0; } kg-search-panel .searchbox,[data-is="kg-search-panel"] .searchbox{ padding: 15px; } kg-search-panel .searchbox input,[data-is="kg-search-panel"] .searchbox input{ appearance: none; -webkit-appearance: none; width: 100%; padding: 0 8px 0 30px; background: #333; border: #ccc; outline: none; border-radius: 5px; height: 30px; line-height: 30px; color: white; font-size: 16px; } kg-search-panel .searchbox i,[data-is="kg-search-panel"] .searchbox i{ position: absolute; top: 37px; left: 38px; } kg-search-panel .results,[data-is="kg-search-panel"] .results{ flex: 1; padding: 15px; border-top: 1px solid #444; } kg-search-panel .scroll,[data-is="kg-search-panel"] .scroll{ overflow-y: auto; } kg-search-panel .scroll::-webkit-scrollbar-track,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-search-panel .scroll::-webkit-scrollbar,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-search-panel .scroll::-webkit-scrollbar-thumb,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-search-panel ul,[data-is="kg-search-panel"] ul{ margin: 0; padding: 0; list-style: none; font-size: 0.8em; } kg-search-panel li,[data-is="kg-search-panel"] li{ padding: 3px 0; line-height: 1; } kg-search-panel .occurrences,[data-is="kg-search-panel"] .occurrences{ display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; background-color: #444; font-size: 10px; text-align: center; font-weight: bold; line-height: 1.2; } kg-search-panel .no-results,[data-is="kg-search-panel"] .no-results{ font-style:italic; } kg-search-panel .disabled,[data-is="kg-search-panel"] .disabled{ text-decoration: line-through; color:#aaa; }', '', function(opts) {
+riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input type="text" ref="query" onkeyup="{doSearch}"> <i class="fa fa-search" aria-hidden="true"></i> </div> <div class="results scroll"> <ul if="{results.length > 0}"> <li each="{type in results}"> <i class="fa fa-flag" if="{type.isProvenance}" title="is a provenance"></i> <a href="#" onclick="{selectType}" onmouseover="{highlightType}" onmouseout="{unhighlightType}" title="{type.id}">{type.name}</a> <span class="occurrences">{type.occurrences}</span> </li> </ul> <div class="no-results" if="{results.length <= 1 && !!refs.query.value.length}"> No type matches your search! </div> </div> </div>', 'kg-search-panel,[data-is="kg-search-panel"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-search-panel .panel,[data-is="kg-search-panel"] .panel{ display: flex; flex-direction: column; height: 100%; border: 1px solid #444; border-radius: 5px 5px 0 0; } kg-search-panel .searchbox,[data-is="kg-search-panel"] .searchbox{ padding: 15px; } kg-search-panel .searchbox input,[data-is="kg-search-panel"] .searchbox input{ appearance: none; -webkit-appearance: none; width: 100%; padding: 0 8px 0 30px; background: #333; border: #ccc; outline: none; border-radius: 5px; height: 30px; line-height: 30px; color: white; font-size: 16px; } kg-search-panel .searchbox i,[data-is="kg-search-panel"] .searchbox i{ position: absolute; top: 37px; left: 38px; } kg-search-panel .results,[data-is="kg-search-panel"] .results{ flex: 1; padding: 15px; border-top: 1px solid #444; } kg-search-panel .scroll,[data-is="kg-search-panel"] .scroll{ overflow-y: auto; } kg-search-panel .scroll::-webkit-scrollbar-track,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-search-panel .scroll::-webkit-scrollbar,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-search-panel .scroll::-webkit-scrollbar-thumb,[data-is="kg-search-panel"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-search-panel ul,[data-is="kg-search-panel"] ul{ margin: 0; padding: 0; list-style: none; font-size: 0.8em; } kg-search-panel li,[data-is="kg-search-panel"] li{ padding: 3px 0; line-height: 1; } kg-search-panel .occurrences,[data-is="kg-search-panel"] .occurrences{ display: inline-block; min-width: 21px; margin-left: 3px; padding: 3px 6px; border-radius: 12px; background-color: #444; font-size: 10px; text-align: center; font-weight: bold; line-height: 1.2; } kg-search-panel .no-results,[data-is="kg-search-panel"] .no-results{ font-style:italic; } kg-search-panel .disabled,[data-is="kg-search-panel"] .disabled{ text-decoration: line-through; color:#aaa; }', '', function(opts) {
         this.selectedType = undefined;
         this.lastUpdate = undefined;
         this.results = [];
@@ -37824,7 +37831,7 @@ riot.tag2('kg-spaces-toggles', '<div class="panel"> <div class="title">Spaces:</
         });
 
         this.on("update", () => {
-            this.spaces = this.stores.structure.getSpacesList();
+            this.spaces = this.stores.structure.getAvailableSpacesList();
         });
 
         this.toggle = e => RiotPolice.trigger("structure:space_toggle", e.item.name);

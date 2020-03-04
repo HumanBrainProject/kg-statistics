@@ -141,7 +141,7 @@
         });
 
         this.on("update", () => {
-            this.spaces = this.stores.structure.getSpacesList();
+            this.spaces = this.stores.structure.getAvailableSpacesList();
         });
 
         this.toggle = e => RiotPolice.trigger("structure:space_toggle", e.item.name);

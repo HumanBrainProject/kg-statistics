@@ -128,6 +128,7 @@
         <div class="results scroll">
             <ul if={results.length > 0}>
                 <li each={type in results}>
+                    <i class="fa fa-flag" if={type.isProvenance} title="is a provenance"></i>
                     <a href="#" onclick={selectType} onmouseover={highlightType} onmouseout={unhighlightType} title={type.id}>{type.name}</a>
                     <span class="occurrences">{type.occurrences}</span>
                 </li>
