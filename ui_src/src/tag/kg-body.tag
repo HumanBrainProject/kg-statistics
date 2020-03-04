@@ -275,7 +275,6 @@
             }
             var self = this;
             this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
-            const previousSelectedType = this.selectedType;
             this.selectedType = this.stores.structure.getSelectedType();
             var data = this.stores.structure.getGraphData();
             var nodes = data.nodes;
@@ -308,22 +307,6 @@
                 $(this.refs.svg).animate({
                     opacity: 1
                 });
-            }
-
-            const newSelectedType = this.stores.structure.getSelectedType();
-            if (newSelectedType) {
-                this.selectedType = newSelectedType;
-                this.svg.selectAll(".selectedNode").classed("selectedNode", false);
-                this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
-                this.svg.selectAll(".related-to-type_" + this.selectedType.hash).classed("selectedRelation", true);
-                this.svg.selectAll(".is-type_" + this.selectedType.hash).classed("selectedNode", true);
-            } else {
-                if (this.selectedType) {
-                    this.resetView();
-                }
-                this.selectedType = undefined;
-                this.svg.selectAll(".selectedNode").classed("selectedNode", false);
-                this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
             const newHighlightedType = this.stores.structure.getHighlightedType();

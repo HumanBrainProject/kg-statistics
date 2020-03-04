@@ -301,13 +301,13 @@
     };
 
 
-    const buildGraphData = typesList => {
+    const buildGraphData = (typesList, forOverview) => {
 
         const availableSpaces = {};
         const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId, isProvenance) => {
-            if ((selectedType.id === sourceId || selectedType.id === targetId) &&
+            if (selectedType && (selectedType.id === sourceId || selectedType.id === targetId) &&
                 ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace)) &&
                 (showProvenanceLinks || !isProvenance)) {
                 availableSpaces[sourceSpace] = spaces[sourceSpace];
@@ -319,12 +319,14 @@
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => selectedType && type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
+        if (!forOverview && selectedType) {
+            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
+        }
 
         const nodes = typesList.reduce((acc, type) => {
             if (typeBelongsToEnabledSpace(type)) {
                 type.spaces.forEach(space => {
-                    if (isSpaceEnabled(space.name) && isNodeEnabled(space.name, type.id)) {
+                    if (isSpaceEnabled(space.name) && (forOverview || isNodeEnabled(space.name, type.id))) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -368,7 +370,7 @@
 
         return {
             hash: Date.now(),
-            availableSpaces: selectedType?Object.values(availableSpaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0)):spacesList,
+            availableSpaces: forOverview?spacesList:Object.values(availableSpaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0)),
             nodes: Object.values(nodes),
             links: links,
         };
@@ -382,14 +384,14 @@
 
         const filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
-        typeGraphData = buildGraphData(filteredTypesList);
+        typeGraphData = buildGraphData(filteredTypesList, false);
     };
 
     const buildOverviewGraphData = () => {
 
         const filteredTypesList = typesList.filter(type  =>  !type.isExcluded);
 
-        overviewGraphData = buildGraphData(filteredTypesList);
+        overviewGraphData = buildGraphData(filteredTypesList, true);
     };
 
     const search = query => {

@@ -36743,13 +36743,13 @@ class RiotStore {
     };
 
 
-    const buildGraphData = typesList => {
+    const buildGraphData = (typesList, forOverview) => {
 
         const availableSpaces = {};
         const enabledNodes = {};
 
         const addRelation = (sourceSpace, sourceId, targetSpace, targetId, isProvenance) => {
-            if ((selectedType.id === sourceId || selectedType.id === targetId) &&
+            if (selectedType && (selectedType.id === sourceId || selectedType.id === targetId) &&
                 ((showIntraSpaceLinks && sourceSpace === targetSpace) || (showExtraSpaceLinks && sourceSpace !== targetSpace)) &&
                 (showProvenanceLinks || !isProvenance)) {
                 availableSpaces[sourceSpace] = spaces[sourceSpace];
@@ -36761,12 +36761,14 @@ class RiotStore {
 
         const isNodeEnabled = (space, id) => !selectedType || selectedType.id === id || !!enabledNodes[space + "/" + id];
 
-        typesList.forEach(type => selectedType && type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
+        if (!forOverview && selectedType) {
+            typesList.forEach(type => type.spacesLinksTo.forEach(relation => addRelation(relation.sourceSpace, type.id, relation.targetSpace, relation.targetId, relation.isProvenance)));
+        }
 
         const nodes = typesList.reduce((acc, type) => {
             if (typeBelongsToEnabledSpace(type)) {
                 type.spaces.forEach(space => {
-                    if (isSpaceEnabled(space.name) && isNodeEnabled(space.name, type.id)) {
+                    if (isSpaceEnabled(space.name) && (forOverview || isNodeEnabled(space.name, type.id))) {
                         acc[space.name + "/" + type.id] = {
                             hash: hashCode(space.name + "/" + type.id),
                             id: type.id,
@@ -36810,7 +36812,7 @@ class RiotStore {
 
         return {
             hash: Date.now(),
-            availableSpaces: selectedType?Object.values(availableSpaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0)):spacesList,
+            availableSpaces: forOverview?spacesList:Object.values(availableSpaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0)),
             nodes: Object.values(nodes),
             links: links,
         };
@@ -36824,14 +36826,14 @@ class RiotStore {
 
         const filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
-        typeGraphData = buildGraphData(filteredTypesList);
+        typeGraphData = buildGraphData(filteredTypesList, false);
     };
 
     const buildOverviewGraphData = () => {
 
         const filteredTypesList = typesList.filter(type  =>  !type.isExcluded);
 
-        overviewGraphData = buildGraphData(filteredTypesList);
+        overviewGraphData = buildGraphData(filteredTypesList, true);
     };
 
     const search = query => {
@@ -37145,7 +37147,6 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
             }
             var self = this;
             this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
-            const previousSelectedType = this.selectedType;
             this.selectedType = this.stores.structure.getSelectedType();
             var data = this.stores.structure.getGraphData();
             var nodes = data.nodes;
@@ -37176,22 +37177,6 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                 $(this.refs.svg).animate({
                     opacity: 1
                 });
-            }
-
-            const newSelectedType = this.stores.structure.getSelectedType();
-            if (newSelectedType) {
-                this.selectedType = newSelectedType;
-                this.svg.selectAll(".selectedNode").classed("selectedNode", false);
-                this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
-                this.svg.selectAll(".related-to-type_" + this.selectedType.hash).classed("selectedRelation", true);
-                this.svg.selectAll(".is-type_" + this.selectedType.hash).classed("selectedNode", true);
-            } else {
-                if (this.selectedType) {
-                    this.resetView();
-                }
-                this.selectedType = undefined;
-                this.svg.selectAll(".selectedNode").classed("selectedNode", false);
-                this.svg.selectAll(".selectedRelation").classed("selectedRelation", false);
             }
 
             const newHighlightedType = this.stores.structure.getHighlightedType();
