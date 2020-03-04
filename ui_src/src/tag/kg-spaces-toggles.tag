@@ -108,7 +108,7 @@
         }
     </style>
     <div class="panel">
-        <div class="title">Spaces:</div>
+        <div class="title">Spaces:&nbsp;&nbsp;&nbsp;<kg-all-spaces-toggle></kg-all-spaces-toggle></div>
         <div class="scroll">
             <ul>
                 <li each={ spaces }>

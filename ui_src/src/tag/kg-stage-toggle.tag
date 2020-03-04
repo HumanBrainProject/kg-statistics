@@ -77,7 +77,7 @@
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
-            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
+            this.update();
         });
 
         this.on("unmount", () => {

@@ -72,17 +72,17 @@
     </div>
 
     <script>
-        this.showIntraSpaceLinks = false;
+        this.showIntraSpaceLinks = true;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
         });
 
         this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
-            this.update();
         });
 
         this.on("update", () => {

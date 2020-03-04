@@ -38,7 +38,7 @@
     let searchQuery = "";
     let searchResults = [];
     let showProvenanceLinks = true;
-    let showIntraSpaceLinks = false;
+    let showIntraSpaceLinks = true;
     let showExtraSpaceLinks = true;
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
@@ -276,7 +276,7 @@
 
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         const target = types[linkTo.targetId];
-        if (target && !target.isExcluded && typeBelongsToEnabledSpace(target)) {
+        if (target && !target.isExcluded) {
             acc.push(target);
         }
         return acc;
@@ -284,7 +284,7 @@
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
         const source = types[linkFrom.sourceId];
-        if (source && !source.isExcluded && typeBelongsToEnabledSpace(source)) {
+        if (source && !source.isExcluded) {
             acc.push(source);
         }
         return acc;
@@ -377,14 +377,10 @@
 
     const buildTypeGraphData = () => {
 
-        let filteredTypesList = [];
-        if (typeBelongsToEnabledSpace(selectedType)) {
+        const directLinkedToTypes = getLinkedToTypes(selectedType);
+        const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
-            const directLinkedToTypes = getLinkedToTypes(selectedType);
-            const directLinkedFromTypes = getLinkedFromTypes(selectedType);
-
-            filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
-        }
+        const filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
         typeGraphData = buildGraphData(filteredTypesList);
     };
@@ -406,6 +402,16 @@
         }
     };
 
+    const showAllSpaces = () => {
+        if (spacesList.reduce((acc, space) => acc && space.enabled, true)) {
+            return true;
+        }
+        if (spacesList.reduce((acc, space) => acc && !space.enabled, true)) {
+            return false;
+        }
+        return undefined;
+    };
+
     const init = () => {
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
@@ -418,15 +424,15 @@
         releasedStage = false;
         highlightedType = undefined;
         showProvenanceLinks = true;
-        showIntraSpaceLinks = false;
+        showIntraSpaceLinks = true;
         showExtraSpaceLinks = true;
+        spacesList.forEach(space => space.enabled = true);
         structureStore.toggleState("TYPE_SELECTED", !!selectedType);
         structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
         structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-        spacesList.forEach(space => space.enabled = true);
     };
 
     const structureStore = new RiotStore("structure",
@@ -461,10 +467,6 @@
                     highlightedType = undefined;
                     buildTypes(data);
                     search();
-                    showIntraSpaceLinks = false;
-                    showExtraSpaceLinks = true;
-                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
                     structureStore.toggleState("TYPE_SELECTED", !!selectedType);
                     structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
                     structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
@@ -489,12 +491,6 @@
                 search();
                 highlightedType = undefined;
                 selectedType = type;
-                if (!showIntraSpaceLinks || !showExtraSpaceLinks) {
-                    showIntraSpaceLinks = true;
-                    showExtraSpaceLinks = true;
-                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-                }
                 buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
@@ -504,13 +500,6 @@
             search();
             highlightedType = undefined;
             selectedType = undefined;
-            if (showIntraSpaceLinks || !showExtraSpaceLinks) {
-                showIntraSpaceLinks = false;
-                showExtraSpaceLinks = true;
-                structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-                structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-                buildOverviewGraphData();
-            }
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
             structureStore.toggleState("TYPE_DETAILS_SHOW", false);
@@ -542,6 +531,18 @@
     structureStore.addAction("structure:space_toggle", name => {
         if (spaces[name]) {
             spaces[name].enabled = !spaces[name].enabled;
+            buildOverviewGraphData();
+            if (selectedType) {
+                buildTypeGraphData();
+            }
+            structureStore.notifyChange();
+        }
+    });
+
+    structureStore.addAction("structure:spaces_all_toggle", enabled => {
+        if ((enabled === true || enabled === false) && enabled !== showAllSpaces()) {
+            const list = selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces;
+            list.forEach(space => space.enabled = enabled);
             buildOverviewGraphData();
             if (selectedType) {
                 buildTypeGraphData();
@@ -593,7 +594,9 @@
     structureStore.addInterface("getTypesList", () => typesList);
 
     structureStore.addInterface("getAvailableSpacesList", () => selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces);
-    
+
+    structureStore.addInterface("showAllSpaces", showAllSpaces);
+
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 
     structureStore.addInterface("getSearchResults", () => searchResults);

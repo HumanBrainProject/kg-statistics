@@ -14,23 +14,23 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 -->
-<kg-extra-space-links-toggle>
+<kg-all-spaces-toggle>
     <style scoped>
         :scope{
-            display:block;
+            display:inline-block;
             color: white;
         }
         
-        .group-view__toggle {
+        .all-spaces__toggle {
             height: 24px;
             display: inline-grid;
-            grid-template-columns: repeat(2, 24px);
+            grid-template-columns: repeat(3, 24px);
             margin: 3px 0;
             border-radius: 20px;
             background: #333;
         }
 
-        button.group-view__toggle__button {
+        button.all-spaces__toggle__button {
             -webkit-appearance: none;
             display: inline-block;
             height: 24px;
@@ -47,7 +47,15 @@
             outline: none;
         }
 
-        button.group-view__toggle__button.selected {
+        button.all-spaces__toggle__button[disabled] {
+            cursor: default;
+        }
+
+        button.all-spaces__toggle__button i.fa-sort{
+            transform: rotate(90deg);
+        }
+
+        button.all-spaces__toggle__button.selected {
             transform: scale(1.12);
             font-size: 0.8em;
             background: #4f5658;
@@ -60,19 +68,21 @@
         }
     </style>
     <div>
-        <div class="group-view__toggle">
-            <button class="group-view__toggle__button {selected: showExtraSpaceLinks}" onClick={toggle} >
+        <div class="all-spaces__toggle">
+            <button class="all-spaces__toggle__button {selected: show === true}" onClick={showAll} >
                 <i class="fa fa-check"></i>
             </button>
-            <button class="group-view__toggle__button {selected: !showExtraSpaceLinks}" onClick={toggle} >
+            <button class="all-spaces__toggle__button {selected: show === undefined}" disabled >
+                <i class="fa fa-sort"></i>
+            </button>
+            <button class="all-spaces__toggle__button {selected: show === false}" onClick={showNone} >
                 <i class="fa fa-close"></i>
             </button>
         </div>
-        <span>show links between spaces</span>
     </div>
 
     <script>
-        this.showExtraSpaceLinks = true;
+        this.show = true;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
@@ -86,9 +96,10 @@
         });
 
         this.on("update", () => {
-            this.showExtraSpaceLinks = this.stores.structure.is("EXTRA_SPACE_LINKS_SHOW");
+            this.show = this.stores.structure.showAllSpaces();
         });
 
-        this.toggle = () => RiotPolice.trigger("structure:space_extra_links_toggle");
+        this.showAll = () => RiotPolice.trigger("structure:spaces_all_toggle", true);
+        this.showNone = () => RiotPolice.trigger("structure:spaces_all_toggle", false);
     </script>
-</kg-extra-space-links-toggle>
+</kg-all-spaces-toggle>

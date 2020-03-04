@@ -36480,7 +36480,7 @@ class RiotStore {
     let searchQuery = "";
     let searchResults = [];
     let showProvenanceLinks = true;
-    let showIntraSpaceLinks = false;
+    let showIntraSpaceLinks = true;
     let showExtraSpaceLinks = true;
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
@@ -36718,7 +36718,7 @@ class RiotStore {
 
     const getLinkedToTypes = type => type.linksTo.reduce((acc, linkTo) => {
         const target = types[linkTo.targetId];
-        if (target && !target.isExcluded && typeBelongsToEnabledSpace(target)) {
+        if (target && !target.isExcluded) {
             acc.push(target);
         }
         return acc;
@@ -36726,7 +36726,7 @@ class RiotStore {
 
     const getLinkedFromTypes = type => type.linksFrom.reduce((acc, linkFrom) => {
         const source = types[linkFrom.sourceId];
-        if (source && !source.isExcluded && typeBelongsToEnabledSpace(source)) {
+        if (source && !source.isExcluded) {
             acc.push(source);
         }
         return acc;
@@ -36819,14 +36819,10 @@ class RiotStore {
 
     const buildTypeGraphData = () => {
 
-        let filteredTypesList = [];
-        if (typeBelongsToEnabledSpace(selectedType)) {
+        const directLinkedToTypes = getLinkedToTypes(selectedType);
+        const directLinkedFromTypes = getLinkedFromTypes(selectedType);
 
-            const directLinkedToTypes = getLinkedToTypes(selectedType);
-            const directLinkedFromTypes = getLinkedFromTypes(selectedType);
-
-            filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
-        }
+        const filteredTypesList = removeDupplicateTypes([selectedType, ...directLinkedToTypes, ...directLinkedFromTypes]);
 
         typeGraphData = buildGraphData(filteredTypesList);
     };
@@ -36848,6 +36844,16 @@ class RiotStore {
         }
     };
 
+    const showAllSpaces = () => {
+        if (spacesList.reduce((acc, space) => acc && space.enabled, true)) {
+            return true;
+        }
+        if (spacesList.reduce((acc, space) => acc && !space.enabled, true)) {
+            return false;
+        }
+        return undefined;
+    };
+
     const init = () => {
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
@@ -36860,15 +36866,15 @@ class RiotStore {
         releasedStage = false;
         highlightedType = undefined;
         showProvenanceLinks = true;
-        showIntraSpaceLinks = false;
+        showIntraSpaceLinks = true;
         showExtraSpaceLinks = true;
+        spacesList.forEach(space => space.enabled = true);
         structureStore.toggleState("TYPE_SELECTED", !!selectedType);
         structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
         structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-        spacesList.forEach(space => space.enabled = true);
     };
 
     const structureStore = new RiotStore("structure",
@@ -36903,10 +36909,6 @@ class RiotStore {
                     highlightedType = undefined;
                     buildTypes(data);
                     search();
-                    showIntraSpaceLinks = false;
-                    showExtraSpaceLinks = true;
-                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
                     structureStore.toggleState("TYPE_SELECTED", !!selectedType);
                     structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
                     structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
@@ -36931,12 +36933,6 @@ class RiotStore {
                 search();
                 highlightedType = undefined;
                 selectedType = type;
-                if (!showIntraSpaceLinks || !showExtraSpaceLinks) {
-                    showIntraSpaceLinks = true;
-                    showExtraSpaceLinks = true;
-                    structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-                    structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-                }
                 buildTypeGraphData();
                 structureStore.toggleState("TYPE_HIGHLIGHTED", false);
                 structureStore.toggleState("TYPE_SELECTED", !!type);
@@ -36946,13 +36942,6 @@ class RiotStore {
             search();
             highlightedType = undefined;
             selectedType = undefined;
-            if (showIntraSpaceLinks || !showExtraSpaceLinks) {
-                showIntraSpaceLinks = false;
-                showExtraSpaceLinks = true;
-                structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
-                structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
-                buildOverviewGraphData();
-            }
             structureStore.toggleState("TYPE_HIGHLIGHTED", false);
             structureStore.toggleState("TYPE_SELECTED", false);
             structureStore.toggleState("TYPE_DETAILS_SHOW", false);
@@ -36984,6 +36973,18 @@ class RiotStore {
     structureStore.addAction("structure:space_toggle", name => {
         if (spaces[name]) {
             spaces[name].enabled = !spaces[name].enabled;
+            buildOverviewGraphData();
+            if (selectedType) {
+                buildTypeGraphData();
+            }
+            structureStore.notifyChange();
+        }
+    });
+
+    structureStore.addAction("structure:spaces_all_toggle", enabled => {
+        if ((enabled === true || enabled === false) && enabled !== showAllSpaces()) {
+            const list = selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces;
+            list.forEach(space => space.enabled = enabled);
             buildOverviewGraphData();
             if (selectedType) {
                 buildTypeGraphData();
@@ -37035,7 +37036,9 @@ class RiotStore {
     structureStore.addInterface("getTypesList", () => typesList);
 
     structureStore.addInterface("getAvailableSpacesList", () => selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces);
-    
+
+    structureStore.addInterface("showAllSpaces", showAllSpaces);
+
     structureStore.addInterface("getSearchQuery", () => searchQuery);
 
     structureStore.addInterface("getSearchResults", () => searchResults);
@@ -37047,6 +37050,28 @@ class RiotStore {
     RiotPolice.registerStore(structureStore);
 })();
 
+
+riot.tag2('kg-all-spaces-toggle', '<div> <div class="all-spaces__toggle"> <button class="all-spaces__toggle__button {selected: show === true}" onclick="{showAll}"> <i class="fa fa-check"></i> </button> <button class="all-spaces__toggle__button {selected: show === undefined}" disabled> <i class="fa fa-sort"></i> </button> <button class="all-spaces__toggle__button {selected: show === false}" onclick="{showNone}"> <i class="fa fa-close"></i> </button> </div> </div>', 'kg-all-spaces-toggle,[data-is="kg-all-spaces-toggle"]{ display:inline-block; color: white; } kg-all-spaces-toggle .all-spaces__toggle,[data-is="kg-all-spaces-toggle"] .all-spaces__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(3, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-all-spaces-toggle button.all-spaces__toggle__button,[data-is="kg-all-spaces-toggle"] button.all-spaces__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-all-spaces-toggle button.all-spaces__toggle__button[disabled],[data-is="kg-all-spaces-toggle"] button.all-spaces__toggle__button[disabled]{ cursor: default; } kg-all-spaces-toggle button.all-spaces__toggle__button i.fa-sort,[data-is="kg-all-spaces-toggle"] button.all-spaces__toggle__button i.fa-sort{ transform: rotate(90deg); } kg-all-spaces-toggle button.all-spaces__toggle__button.selected,[data-is="kg-all-spaces-toggle"] button.all-spaces__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-all-spaces-toggle span,[data-is="kg-all-spaces-toggle"] span{ padding-left: 3px; }', '', function(opts) {
+        this.show = true;
+
+        this.on("mount", () => {
+            RiotPolice.requestStore("structure", this);
+            RiotPolice.on("structure.changed", this.update);
+            this.update();
+        });
+
+        this.on("unmount", () => {
+            RiotPolice.off("structure.changed", this.update);
+            RiotPolice.releaseStore("structure", this);
+        });
+
+        this.on("update", () => {
+            this.show = this.stores.structure.showAllSpaces();
+        });
+
+        this.showAll = () => RiotPolice.trigger("structure:spaces_all_toggle", true);
+        this.showNone = () => RiotPolice.trigger("structure:spaces_all_toggle", false);
+});
 
 riot.tag2('kg-app', '<div class="kg-app-container "> <kg-topbar></kg-topbar> <kg-body if="{isLoaded}"></kg-body> <kg-side-panel if="{isLoaded}"></kg-side-panel> <div class="loading-panel {show: isLoading}"> <span class="loading-spinner"> <img src="img/ebrains.svg" alt="loading..."> </span> <span class="loading-label">Loading structure</span> </div> <div class="error-panel {show: hasError}"> <span class="error-message">The service is temporary unavailable. Please retry in a moment.</span> <div class="error-navigation"> <button onclick="{retry}">Retry</button> </div> </div> </div>', 'kg-app,[data-is="kg-app"]{ display:block; width:100vw; height:100vh; --topbar-height: 80px; --sidebar-width: 400px; --search-panel-width: 300px; position:absolute; top:0; left:0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; } kg-app input,[data-is="kg-app"] input,kg-app button,[data-is="kg-app"] button{ -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; } kg-app button *,[data-is="kg-app"] button *{ cursor: pointer; } kg-app button[disabled] *,[data-is="kg-app"] button[disabled] *{ cursor: default; } kg-app a,[data-is="kg-app"] a{ color:white; } kg-app a:hover,[data-is="kg-app"] a:hover{ color:#aaa; } kg-app kg-topbar,[data-is="kg-app"] kg-topbar{ display: block; position:absolute; top:0; left:0; width:100vw; height:var(--topbar-height); width:100vw; background-color:#222; } kg-app kg-body,[data-is="kg-app"] kg-body{ position:absolute; width:calc(100vw - var(--sidebar-width)); height:calc(100vh - var(--topbar-height)); background:#333; top:var(--topbar-height); left:0; } kg-app kg-side-panel,[data-is="kg-app"] kg-side-panel{ position:absolute; width:var(--sidebar-width); height:calc(100vh - var(--topbar-height)); top:var(--topbar-height); right:0; z-index:20; } kg-app .kg-app-container,[data-is="kg-app"] .kg-app-container{ position:relative; width:100vw; height:100vh; transition:transform 0.7s cubic-bezier(0.77, -0.46, 0.35, 1.66); z-index:2; } kg-app .loading-panel,[data-is="kg-app"] .loading-panel{ position: absolute; width: 380px; height: 80px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; -webkit-box-shadow: 3px 3px 6px #8f8a8a; box-shadow: 3px 3px 6px black; } kg-app .loading-panel.show,[data-is="kg-app"] .loading-panel.show{ top: calc(40% - 40px); } kg-app .loading-panel .loading-spinner,[data-is="kg-app"] .loading-panel .loading-spinner{ position: absolute; display: inline-block; width: 40px; height: 40px; } kg-app .loading-panel .loading-spinner img,[data-is="kg-app"] .loading-panel .loading-spinner img{ width: 100%; height: 100%; -webkit-animation: loading-spinner-rotate 0.3s infinite linear; animation: loading-spinner-rotate 0.3s infinite linear; } kg-app .loading-panel .loading-label,[data-is="kg-app"] .loading-panel .loading-label{ display: inline-block; padding: 12px 0 0 55px; } @-webkit-keyframes loading-spinner-rotate { 0% { -webkit-transform: rotateZ(0deg) } 100% { -webkit-transform: rotateZ(360deg) } } @keyframes loading-spinner-rotate { 0% { transform: rotateZ(0deg); -webkit-transform: rotateZ(0deg); } 100% { transform: rotateZ(0deg); -webkit-transform: rotateZ(360deg); } } kg-app .error-panel,[data-is="kg-app"] .error-panel{ position: absolute; width: 360px; top: -200px; margin-left: calc(50% - 180px); padding: 20px; border-radius: 4px; box-sizing: border-box; background-color: #404040; transition: margin-top 0.25s ease-in; box-shadow: 3px 3px 6px black; } kg-app .error-panel.show,[data-is="kg-app"] .error-panel.show{ top: calc(40% - 60px); } kg-app .error-panel .error-message,[data-is="kg-app"] .error-panel .error-message{ display: inline-block; font-size: 1em; line-height: 1.5em; text-align: center; } kg-app .error-panel .error-navigation,[data-is="kg-app"] .error-panel .error-navigation{ display: flex; justify-content: space-evenly; padding-top: 15px; } kg-app .error-panel button,[data-is="kg-app"] .error-panel button{ margin: 0; padding: 11px 28px; border: 0; border-radius: 3px; background-color: #1f1f1f; color: #c9cccf; font-size: 1em; text-align: center; transition: background-color 0.2s ease-in, color 0.2s ease-in, box-shadow 0.2s ease-in, color 0.2s ease-in, -webkit-box-shadow 0.2s ease-in; cursor: pointer; } kg-app .error-panel button:hover,[data-is="kg-app"] .error-panel button:hover{ box-shadow: 3px 3px 6px black; background-color: #292929; color: white; }', '', function(opts) {
         this.hasError = false;
@@ -37707,12 +37732,12 @@ riot.tag2('kg-extra-space-links-toggle', '<div> <div class="group-view__toggle">
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
         });
 
         this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
-            this.update();
         });
 
         this.on("update", () => {
@@ -37723,17 +37748,17 @@ riot.tag2('kg-extra-space-links-toggle', '<div> <div class="group-view__toggle">
 });
 
 riot.tag2('kg-intra-space-links-toggle', '<div> <div class="group-view__toggle"> <button class="group-view__toggle__button {selected: showIntraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-check"></i> </button> <button class="group-view__toggle__button {selected: !showIntraSpaceLinks}" onclick="{toggle}"> <i class="fa fa-close"></i> </button> </div> <span>show intra-space links</span> </div>', 'kg-intra-space-links-toggle,[data-is="kg-intra-space-links-toggle"]{ display:block; color: white; } kg-intra-space-links-toggle .group-view__toggle,[data-is="kg-intra-space-links-toggle"] .group-view__toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-intra-space-links-toggle button.group-view__toggle__button,[data-is="kg-intra-space-links-toggle"] button.group-view__toggle__button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-intra-space-links-toggle button.group-view__toggle__button.selected,[data-is="kg-intra-space-links-toggle"] button.group-view__toggle__button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-intra-space-links-toggle span,[data-is="kg-intra-space-links-toggle"] span{ padding-left: 3px; }', '', function(opts) {
-        this.showIntraSpaceLinks = false;
+        this.showIntraSpaceLinks = true;
 
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
         });
 
         this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
-            this.update();
         });
 
         this.on("update", () => {
@@ -37749,12 +37774,12 @@ riot.tag2('kg-provenance-toggle', '<div> <div class="group-view__toggle"> <butto
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
+            this.update();
         });
 
         this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
-            this.update();
         });
 
         this.on("update", () => {
@@ -37816,7 +37841,7 @@ riot.tag2('kg-search-panel', '<div class="panel"> <div class="searchbox"> <input
 riot.tag2('kg-side-panel', '<kg-stage-toggle></kg-stage-toggle> <kg-tabs></kg-tabs> <kg-spaces-toggles></kg-spaces-toggles> <kg-provenance-toggle></kg-provenance-toggle> <kg-intra-space-links-toggle></kg-intra-space-links-toggle> <kg-extra-space-links-toggle></kg-extra-space-links-toggle>', 'kg-side-panel,[data-is="kg-side-panel"]{ position: relative; width: 100%; height:100%; display: flex; flex-direction: column; padding: 15px; background: #111; color:white; } kg-side-panel > * + *,[data-is="kg-side-panel"] > * + *{ padding-top: 6px; } kg-side-panel kg-tabs,[data-is="kg-side-panel"] kg-tabs{ flex: 3; overflow: hidden; padding: 15px 0 0 0; } kg-side-panel kg-spaces-toggles,[data-is="kg-side-panel"] kg-spaces-toggles{ flex: 1; overflow: hidden; padding: 15px 0 9px 0; }', '', function(opts) {
 });
 
-riot.tag2('kg-spaces-toggles', '<div class="panel"> <div class="title">Spaces:</div> <div class="scroll"> <ul> <li each="{spaces}"> <div class="space-toggle"> <button class="space-toggle_button {selected: enabled}" onclick="{parent.toggle}"> <i class="fa fa-check"></i> </button> <button class="space-toggle_button {selected: !enabled}" onclick="{parent.toggle}"> <i class="fa fa-close"></i> </button> </div> <span>{name}</span> </li> </ul> </div> </div>', 'kg-spaces-toggles,[data-is="kg-spaces-toggles"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-spaces-toggles .panel,[data-is="kg-spaces-toggles"] .panel{ display: flex; flex-direction: column; height: 100%; } kg-spaces-toggles .title,[data-is="kg-spaces-toggles"] .title{ padding: 5px 0; } kg-spaces-toggles .scroll,[data-is="kg-spaces-toggles"] .scroll{ flex: 1; overflow-y: auto; padding: 5px 15px; border: 1px solid #444; } kg-spaces-toggles .scroll::-webkit-scrollbar-track,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-spaces-toggles .scroll::-webkit-scrollbar,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-spaces-toggles .scroll::-webkit-scrollbar-thumb,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-spaces-toggles ul,[data-is="kg-spaces-toggles"] ul{ list-style: none; margin: 0; padding: 0; } kg-spaces-toggles li,[data-is="kg-spaces-toggles"] li{ margin: 5px 0; } kg-spaces-toggles .space-toggle,[data-is="kg-spaces-toggles"] .space-toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-spaces-toggles button.space-toggle_button,[data-is="kg-spaces-toggles"] button.space-toggle_button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-spaces-toggles button.space-toggle_button.selected,[data-is="kg-spaces-toggles"] button.space-toggle_button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-spaces-toggles span,[data-is="kg-spaces-toggles"] span{ padding-left: 3px; }', '', function(opts) {
+riot.tag2('kg-spaces-toggles', '<div class="panel"> <div class="title">Spaces:&nbsp;&nbsp;&nbsp;<kg-all-spaces-toggle></kg-all-spaces-toggle></div> <div class="scroll"> <ul> <li each="{spaces}"> <div class="space-toggle"> <button class="space-toggle_button {selected: enabled}" onclick="{parent.toggle}"> <i class="fa fa-check"></i> </button> <button class="space-toggle_button {selected: !enabled}" onclick="{parent.toggle}"> <i class="fa fa-close"></i> </button> </div> <span>{name}</span> </li> </ul> </div> </div>', 'kg-spaces-toggles,[data-is="kg-spaces-toggles"]{ display: block; position: relative; width: 100%; height: 100%; padding: 15px; background: #111; color:white; } kg-spaces-toggles .panel,[data-is="kg-spaces-toggles"] .panel{ display: flex; flex-direction: column; height: 100%; } kg-spaces-toggles .title,[data-is="kg-spaces-toggles"] .title{ padding: 5px 0; } kg-spaces-toggles .scroll,[data-is="kg-spaces-toggles"] .scroll{ flex: 1; overflow-y: auto; padding: 5px 15px; border: 1px solid #444; } kg-spaces-toggles .scroll::-webkit-scrollbar-track,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar-track{ -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); background-color: #222; } kg-spaces-toggles .scroll::-webkit-scrollbar,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar{ width: 10px; background-color: #F5F5F5; } kg-spaces-toggles .scroll::-webkit-scrollbar-thumb,[data-is="kg-spaces-toggles"] .scroll::-webkit-scrollbar-thumb{ background-color: #000000; border-radius: 5px; } kg-spaces-toggles ul,[data-is="kg-spaces-toggles"] ul{ list-style: none; margin: 0; padding: 0; } kg-spaces-toggles li,[data-is="kg-spaces-toggles"] li{ margin: 5px 0; } kg-spaces-toggles .space-toggle,[data-is="kg-spaces-toggles"] .space-toggle{ height: 24px; display: inline-grid; grid-template-columns: repeat(2, 24px); margin: 3px 0; border-radius: 20px; background: #333; } kg-spaces-toggles button.space-toggle_button,[data-is="kg-spaces-toggles"] button.space-toggle_button{ -webkit-appearance: none; display: inline-block; height: 24px; margin: 0; padding: 0; border: 0; cursor: pointer; font-size: 0.66em; text-align: center; transition: all .2s ease; background: none; line-height: 24px; color: white; outline: none; } kg-spaces-toggles button.space-toggle_button.selected,[data-is="kg-spaces-toggles"] button.space-toggle_button.selected{ transform: scale(1.12); font-size: 0.8em; background: #4f5658; color: white; border-radius: 50%; } kg-spaces-toggles span,[data-is="kg-spaces-toggles"] span{ padding-left: 3px; }', '', function(opts) {
         this.spaces = [];
 
         this.on("mount", () => {
@@ -37843,7 +37868,7 @@ riot.tag2('kg-stage-toggle', '<div> <div class="group-view__toggle"> <button cla
         this.on("mount", () => {
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
-            this.releasedStage = this.stores.structure.is("STAGE_RELEASED");
+            this.update();
         });
 
         this.on("unmount", () => {
