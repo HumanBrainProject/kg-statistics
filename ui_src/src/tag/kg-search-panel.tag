@@ -167,7 +167,7 @@
             }
 
             if(!this.stores.structure.is("TYPE_DETAILS_SHOW")){
-                $(this.refs.query).focus();
+                this.refs.query.focus();
             }
         });
 

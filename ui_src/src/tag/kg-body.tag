@@ -26,6 +26,8 @@
 
             cursor: all-scroll;
             font-size: 10px;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
         }
 
         .nodegraph text {
@@ -262,11 +264,13 @@
             RiotPolice.requestStore("structure", this);
             RiotPolice.on("structure.changed", this.update);
             this.update();
+            document.addEventListener("keydown", this.keydownCapture);
         });
 
         this.on("unmount", () => {
             RiotPolice.off("structure.changed", this.update);
             RiotPolice.releaseStore("structure", this);
+            document.removeEventListener("keydown", this.keydownCapture);
         });
 
         this.on("update", () => {
@@ -300,13 +304,10 @@
                 this.nodes = nodes;
                 this.links = links;
 
-                $(this.refs.svg).empty().css({
-                    opacity: 0
-                });
+                this.refs.svg.style.opacity = 0;
+                Object.values(this.refs.svg.childNodes).forEach(child => this.refs.svg.removeChild(child));
                 this.firstDraw();
-                $(this.refs.svg).animate({
-                    opacity: 1
-                });
+                this.refs.svg.style.opacity = 1;
             }
 
             const newHighlightedType = this.stores.structure.getHighlightedType();
@@ -349,28 +350,28 @@
                     zoom).scale(zoomScaleTo));
         }
 
-        $(document).on("keydown", e => {
-            if (e.shiftKey && e.ctrlKey && e.keyCode == 67) {
-                if (!this.blockDownload) {
-                    this.blockDownload = true;
-                    self.capture();
-                }
-            } else {
-                this.blockDownload = false;
-            }
-        });
-
         this.capture = () => {            
             let date = new Date();
             let displayText = this.view.selectAll(".node__label").attr("display");
             this.view.selectAll(".node__label").attr("display", "");
-            saveSvgAsPng(this.refs.svg, "HBP_KG_" + moment(date).format("YYYY-MM-DD_kk-mm-ss") + ".png", {
+            saveSvgAsPng(this.refs.svg, "EBRAINS_KG_" + moment(date).format("YYYY-MM-DD_kk-mm-ss") + ".png", {
                 selectorRemap: (s) => {
                     return s.replace('kg-body', '')
                 },
                 scale: 4
             });
             this.view.selectAll(".node__label").attr("display", displayText);
+        }
+
+        this.keydownCapture = e => {
+            if (e.shiftKey && e.ctrlKey && e.keyCode == 67) {
+                if (!this.blockDownload) {
+                    this.blockDownload = true;
+                    this.capture();
+                }
+            } else {
+                this.blockDownload = false;
+            }
         }
 
         this.zoomIn = () => {
