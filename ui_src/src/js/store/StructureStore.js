@@ -128,11 +128,13 @@
             type.properties = type.properties.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
             const linksTo = type.properties.reduce((acc, property) => {
                 const isProvenance = property.id.startsWith(AppConfig.structure.provenance);
+                if (isProvenance) {
+                    property.isProvenance = isProvenance;
+                }
                 if (excludedPropertiesForLinks.includes(property.name)) {
                     property.excludeLinks = true;
                 }
                 property.targetTypes.forEach(targetType => {
-                    targetType.isProvenance = isProvenance;
                     const target = types[targetType.id];
                     if (target) {
                         targetType.name = target.name;
@@ -176,11 +178,13 @@
                 }
                 spaceFrom.properties.forEach(property => {
                     const isProvenance = property.id.startsWith(AppConfig.structure.provenance);
+                    if (isProvenance) {
+                        property.isProvenance = isProvenance;
+                    }
                     if (excludedPropertiesForLinks.includes(property.name)) {
                         property.excludeLinks = true;
                     }
                     property.targetTypes.forEach(targetType => {
-                        targetType.isProvenance = isProvenance;
                         const target = types[targetType.id];
                         if (target) {
                             targetType.name = target.name;
@@ -231,7 +235,8 @@
                         linksFrom[linkTo.targetId][type.id] = {
                             occurrences: 0,
                             sourceId: type.id,
-                            sourceName: type.name
+                            sourceName: type.name,
+                            isProvenance: linkTo.isProvenance
                         };
                         if (type.isExcluded) {
                             linksFrom[linkTo.targetId][type.id].isExcluded = true;
