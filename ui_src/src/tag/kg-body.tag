@@ -305,7 +305,7 @@
                 this.links = links;
 
                 this.refs.svg.style.opacity = 0;
-                Object.values(this.refs.svg.childNodes).forEach(child => this.refs.svg.removeChild(child));
+                this.clearView();
                 this.firstDraw();
                 this.refs.svg.style.opacity = 1;
             }
@@ -339,6 +339,33 @@
                 });
             }
         });
+
+        this.clearView = () => {
+            /*
+            this.svg.selectAll(".hull")
+                .on("mouseover", null)
+                .on("mouseout", null)
+                .on("start", null)
+                .on("drag", null)
+                .on("end", null);
+            this.svg.selectAll(".links")
+                .on("mouseover", null)
+                .on("mouseout", null);
+            this.svg.selectAll(".link-nodes")
+                .on("mouseover", null)
+                .on("mouseout", null);
+            this.svg.selectAll(".nodes")
+                .on("mouseover", null)
+                .on("mouseout", null)
+                .on("click", null)
+                .on("start", null)
+                .on("drag", null)
+                .on("end", null);
+            this.zoom
+                .on("zoom", null);
+            */
+            Object.values(this.refs.svg.childNodes).forEach(child => this.refs.svg.removeChild(child));
+        }
 
         this.resetView = () => {
             let width = this.svg.node().getBoundingClientRect().width;
