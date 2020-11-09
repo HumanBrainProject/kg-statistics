@@ -30,3 +30,14 @@ gulp
 
 This will start a local node server on the port 8000
 
+## Build the docker
+
+```
+docker build . --tag kg-statistics:1.0.0
+```
+
+## Run the container
+
+```
+docker run -d --publish 80:80 kg-statistics:1.0.0
+```

@@ -7,8 +7,7 @@ COPY package.json /usr/src/app/package.json
 COPY gulpfile.js /usr/src/app/gulpfile.js
 COPY . /usr/src/app
 RUN npm i natives
-RUN npm install -g gulp-cli && npm install
-RUN gulp build
+RUN npm install -g gulp-cli && npm install && gulp build
 
 FROM nginx:1.15.9-alpine
 COPY config/nginx.conf /etc/nginx/conf.d/default.conf

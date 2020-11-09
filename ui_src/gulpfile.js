@@ -49,7 +49,7 @@ gulp.task('default', ['build'], function () {
                 enable: true,
                 path: "./build"
             },
-            open: "http://localhost:8000/index.html",
+            open: "http://localhost:8000/index.html", /* Not used in production since served with nginx */
             port: 8000,
             proxies: [{
                     source: "/api/",
