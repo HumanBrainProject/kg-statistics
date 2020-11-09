@@ -21,7 +21,7 @@ const gulp = require('gulp'),
     webserver = require('gulp-webserver'),
     minify = require('gulp-minify');
 
-gulp.task('build', function (done) {
+function build(done) {
     gulp.src(['src/js/lib/*.js',
             'src/js/RiotPolice.js',
             'src/js/RiotStore.js',
@@ -37,12 +37,17 @@ gulp.task('build', function (done) {
         }))*/
         .pipe(gulp.dest('./build'));
 
-    gulp.src('src/index.html').pipe(gulp.dest('./build'))
-    gulp.src('src/img/**/*.*').pipe(gulp.dest('./build/img/'))
+    gulp.src('src/index.html').pipe(gulp.dest('./build'));
+    gulp.src('src/img/**/*.*').pipe(gulp.dest('./build/img/'));
+    done();
+}
+
+gulp.task('build', function (done) {
+    build(done)
 });
 
-gulp.task('default', ['build'], function () {
-    gulp.watch('src/**/*', ['build']);
+gulp.task('default', gulp.series(function (done) {
+    gulp.watch('src/**/*', function(done) { build(done)} );
     gulp.src('./build/')
         .pipe(webserver({
             directoryListing: {
@@ -58,4 +63,4 @@ gulp.task('default', ['build'], function () {
             ]
         }));
     done();
-});
+}));
