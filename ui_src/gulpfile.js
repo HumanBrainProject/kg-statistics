@@ -35,20 +35,19 @@ gulp.task('build', function (done) {
         /*.pipe(minify({
             ext:{min:'.min.js'}
         }))*/
-        .pipe(gulp.dest('../ui/'));
+        .pipe(gulp.dest('./build'));
 
-    gulp.src('src/index.html').pipe(gulp.dest('../ui/'))
-    gulp.src('src/img/**/*.*').pipe(gulp.dest('../ui/img/'))
-    done();
+    gulp.src('src/index.html').pipe(gulp.dest('./build'))
+    gulp.src('src/img/**/*.*').pipe(gulp.dest('./build/img/'))
 });
 
-gulp.task('default', function (done) {
-    gulp.watch('src/**/*', gulp.series('build'));
-    gulp.src('../ui/')
+gulp.task('default', ['build'], function () {
+    gulp.watch('src/**/*', ['build']);
+    gulp.src('./build/')
         .pipe(webserver({
             directoryListing: {
                 enable: true,
-                path: "../ui/"
+                path: "./build"
             },
             open: "http://localhost:8000/index.html",
             port: 8000,
