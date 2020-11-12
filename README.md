@@ -16,16 +16,16 @@ To build the frontend run the following commands
 npm install -g gulp-cli
 cd ui
 npm install
-gulp build
+npm build
 ```
 This will create all the files needed in the /ui folder
 
 
 ## Run
-In order to run locally the statistics project run the following commands inside ui_src
+In order to run locally the statistics project run the following commands inside ui
 
 ```
-gulp
+npm start
 ```
 
 This will start a local node server on the port 8000
