@@ -21,7 +21,7 @@ const gulp = require('gulp'),
     webserver = require('gulp-webserver'),
     minify = require('gulp-minify');
 
-gulp.task('build', function (done) {
+function build(done) {
     gulp.src(['src/js/lib/*.js',
             'src/js/RiotPolice.js',
             'src/js/RiotStore.js',
@@ -35,22 +35,26 @@ gulp.task('build', function (done) {
         /*.pipe(minify({
             ext:{min:'.min.js'}
         }))*/
-        .pipe(gulp.dest('../ui/'));
+        .pipe(gulp.dest('./build'));
 
-    gulp.src('src/index.html').pipe(gulp.dest('../ui/'))
-    gulp.src('src/img/**/*.*').pipe(gulp.dest('../ui/img/'))
+    gulp.src('src/index.html').pipe(gulp.dest('./build'));
+    gulp.src('src/img/**/*.*').pipe(gulp.dest('./build/img/'));
     done();
+}
+
+gulp.task('build', function (done) {
+    build(done)
 });
 
-gulp.task('default', function (done) {
-    gulp.watch('src/**/*', gulp.series('build'));
-    gulp.src('../ui/')
+gulp.task('default', gulp.series(function (done) {
+    gulp.watch('src/**/*', function(done) { build(done)} );
+    gulp.src('./build/')
         .pipe(webserver({
             directoryListing: {
                 enable: true,
-                path: "../ui/"
+                path: "./build"
             },
-            open: "http://localhost:8000/index.html",
+            open: "http://localhost:8000/index.html", /* Not used in production since served with nginx */
             port: 8000,
             proxies: [{
                     source: "/api/",
@@ -59,4 +63,4 @@ gulp.task('default', function (done) {
             ]
         }));
     done();
-});
+}));

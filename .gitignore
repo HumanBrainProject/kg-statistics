@@ -13,3 +13,6 @@ kg_statistics/kg_statistics/ui/
 kg_statistics/kg_statistics/*.log
 **/.idea
 **/*.iml
+build/
+**/.DS_Store
+ui/
