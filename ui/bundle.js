@@ -26271,18 +26271,18 @@ class RiotStore {
             return properties.map(property => ({
                 id: property["http://schema.org/identifier"],
                 name: getName(property["http://schema.org/identifier"], property["http://schema.org/name"]),
-                occurrences: property["https://kg.ebrains.eu/vocab/meta/occurrences"],
-                targetTypes: property["https://kg.ebrains.eu/vocab/meta/targetTypes"].map(targetType => {
+                occurrences: property["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
+                targetTypes: property["https://core.kg.ebrains.eu/vocab/meta/targetTypes"].map(targetType => {
                     const type = {
-                        id: targetType["https://kg.ebrains.eu/vocab/meta/type"],
-                        occurrences: targetType["https://kg.ebrains.eu/vocab/meta/occurrences"],
+                        id: targetType["https://core.kg.ebrains.eu/vocab/meta/type"],
+                        occurrences: targetType["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
                         spaces: []
                     };
-                    if (Array.isArray(targetType["https://kg.ebrains.eu/vocab/meta/spaces"])) {
-                        type.spaces = targetType["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
-                            //type: space["https://kg.ebrains.eu/vocab/meta/type"],
-                            name: space["https://kg.ebrains.eu/vocab/meta/space"],
-                            occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"]
+                    if (Array.isArray(targetType["https://core.kg.ebrains.eu/vocab/meta/spaces"])) {
+                        type.spaces = targetType["https://core.kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
+                            //type: space["https://core.kg.ebrains.eu/vocab/meta/type"],
+                            name: space["https://core.kg.ebrains.eu/vocab/meta/space"],
+                            occurrences: space["https://core.kg.ebrains.eu/vocab/meta/occurrences"]
                         }));
                     }
                     return type;
@@ -26293,15 +26293,15 @@ class RiotStore {
         const type = {
             id: rawtype["http://schema.org/identifier"],
             name: rawtype["http://schema.org/name"],
-            occurrences: rawtype["https://kg.ebrains.eu/vocab/meta/occurrences"],
-            properties: simplifyPropertiesSemeantics(rawtype["https://kg.ebrains.eu/vocab/meta/properties"]),
+            occurrences: rawtype["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
+            properties: simplifyPropertiesSemeantics(rawtype["https://core.kg.ebrains.eu/vocab/meta/properties"]),
             spaces: []
         };
-        if (Array.isArray(rawtype["https://kg.ebrains.eu/vocab/meta/spaces"])) {
-            type.spaces = rawtype["https://kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
-                name: space["https://kg.ebrains.eu/vocab/meta/space"],
-                occurrences: space["https://kg.ebrains.eu/vocab/meta/occurrences"],
-                properties: simplifyPropertiesSemeantics(space["https://kg.ebrains.eu/vocab/meta/properties"])
+        if (Array.isArray(rawtype["https://core.kg.ebrains.eu/vocab/meta/spaces"])) {
+            type.spaces = rawtype["https://core.kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
+                name: space["https://core.kg.ebrains.eu/vocab/meta/space"],
+                occurrences: space["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
+                properties: simplifyPropertiesSemeantics(space["https://core.kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
         return type;
@@ -26654,7 +26654,7 @@ class RiotStore {
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/types?stage=${releasedStage ? "RELEASED" : "LIVE"}&withProperties=true`)
+            fetch(`/api/v3-beta/types?stage=${releasedStage ? "RELEASED" : "IN_PROGRESS"}&withProperties=true`)
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
@@ -27063,7 +27063,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
-                    .radius(d => !this.selectedType ? nodeRscale(d.occurrences) + 8:30)
+                    .radius(d => !this.selectedType ? (d.occurrences?nodeRscale(d.occurrences):0) + 8:30)
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
@@ -27144,7 +27144,7 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     $linkLine.classed("related-to-link_" + d.source.hash + "-" + d.target.hash, true);
                     $linkLine.classed("is-provenance", d.isProvenance)
                 })
-                .attr("stroke-width", d => linkRscale(d.occurrences))
+                .attr("stroke-width", d => d.occurrences?linkRscale(d.occurrences):0)
                 .on("mouseover", d => {
                     const querySelector = ".related-to-link_" + d.source.hash + "-" + d.target.hash;
                     self.view
@@ -27217,10 +27217,9 @@ riot.tag2('kg-body', '<div class="info">{info}</div> <div class="details">{detai
                     .attr("class", "node")
                     .each(function(d) {
                         const $node = d3.select(this);
-
                         $node.append("circle")
                             .attr("class", "node__circle")
-                            .attr("r", d => nodeRscale(d.occurrences))
+                            .attr("r", d => d.occurrences? nodeRscale(d.occurrences): 0)
                             .append('title').text(d.id);
 
                         $node.append("text")

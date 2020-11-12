@@ -469,7 +469,7 @@
                     .strength(-100)
                 )
                 .force('collide', d3.forceCollide()
-                    .radius(d => !this.selectedType ? nodeRscale(d.occurrences) + 8:30)
+                    .radius(d => !this.selectedType ? (d.occurrences?nodeRscale(d.occurrences):0) + 8:30)
                 )
                 .force('center', d3.forceCenter(width / 2, height / 2));
 
@@ -556,7 +556,7 @@
                     $linkLine.classed("related-to-link_" + d.source.hash + "-" + d.target.hash, true);
                     $linkLine.classed("is-provenance", d.isProvenance)
                 })
-                .attr("stroke-width", d => linkRscale(d.occurrences))
+                .attr("stroke-width", d => d.occurrences?linkRscale(d.occurrences):0)
                 .on("mouseover", d => {
                     const querySelector = ".related-to-link_" + d.source.hash + "-" + d.target.hash;
                     self.view
@@ -632,10 +632,9 @@
                     .attr("class", "node")
                     .each(function(d) {
                         const $node = d3.select(this);
-
                         $node.append("circle")
                             .attr("class", "node__circle")
-                            .attr("r", d => nodeRscale(d.occurrences))
+                            .attr("r", d => d.occurrences? nodeRscale(d.occurrences): 0)
                             .append('title').text(d.id);
 
                         $node.append("text")
@@ -704,7 +703,7 @@
             }
             
             function ticked() {
-                
+
                 links
                     .attr("x1", d => d.source.x)
                     .attr("y1", d => d.source.y)

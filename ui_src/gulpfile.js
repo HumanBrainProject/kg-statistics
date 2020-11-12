@@ -54,7 +54,7 @@ gulp.task('default', function (done) {
             port: 8000,
             proxies: [{
                     source: "/api/",
-                    target: "https://kg-dev.humanbrainproject.eu/api/"
+                    target: "http://localhost:7130/"
                 }
             ]
         }));
