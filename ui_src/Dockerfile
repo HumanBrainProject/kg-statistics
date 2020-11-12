@@ -9,6 +9,5 @@ COPY . /usr/src/app
 RUN npm install -g gulp-cli && npm install && gulp build
 
 FROM nginx:1.19.4-alpine
-COPY config/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build-stage /usr/src/app/build /usr/share/nginx/html
 CMD ["nginx", "-g", "daemon off;"]
