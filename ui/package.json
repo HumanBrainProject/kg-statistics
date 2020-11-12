@@ -11,5 +11,9 @@
   },
   "devDependencies": {
     "gulp-webserver": "^0.9.1"
+  },
+  "scripts": {
+    "start": "gulp build && gulp",
+    "build": "gulp build"
   }
 }

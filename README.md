@@ -14,7 +14,7 @@ To build the frontend run the following commands
 
 ```
 npm install -g gulp-cli
-cd ui_src
+cd ui
 npm install
 gulp build
 ```
