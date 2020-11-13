@@ -60,7 +60,7 @@
     };
 
     const simplifySemantics = rawtype => {
-        const extractSpaceFromId = (id) => { 
+        const extractSpaceFromId = id => { 
                 
             if (typeof id === "string") {
                 const m = id.match(/^.*\/([a-z0-9_\-]+)\/[a-z0-9_\-]+#?[a-z0-9_\-]+$/i);
@@ -127,16 +127,16 @@
             }));
         }
 
-        // if (type.occurrences === 0) {
-        //     const name = extractSpaceFromId(type.id);
-        //     if (name) {
-        //         types.spaces.push({
-        //             name: name,
-        //             occurrences: 0,
-        //             properties: []
-        //         });
-        //     }
-        // }
+        if (type.occurrences === 0) {
+            const name = extractSpaceFromId(type.id);
+            if (name) {
+                type.spaces.push({
+                    name: name,
+                    occurrences: 0,
+                    properties: []
+                });
+            }
+        }
         return type;
     };
 
@@ -284,9 +284,6 @@
         spaces = {};
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
-            if (type.name === "Abstractionlevel") {
-                console.log(type);
-            }
             type.hash = hashCode(type.id);
             type.isProvenance = type.id.startsWith(AppConfig.structure.provenance);
             if (excludedTypes.includes(type.id)) {

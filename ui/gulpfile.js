@@ -54,7 +54,7 @@ gulp.task('default', function (done) {
             port: 8000,
             proxies: [{
                     source: "/api/",
-                    target: "http://localhost:7130/"
+                    target: "https://stats.kg-dev.ebrains.eu/api/"
                 }
             ]
         }));

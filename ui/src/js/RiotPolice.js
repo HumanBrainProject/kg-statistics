@@ -19,7 +19,6 @@ const RiotPolice = {
 
     registerStore: function(store) {
         if(!(store instanceof RiotStore)){
-            console.log(store);
             throw "Registered Store must be instances of RiotStore";
         }
 
