@@ -37,9 +37,10 @@
     let highlightedType = undefined;
     let searchQuery = "";
     let searchResults = [];
-    let showProvenanceLinks = true;
-    let showIntraSpaceLinks = true;
-    let showExtraSpaceLinks = true;
+
+    let showProvenanceLinks = !(localStorage.getItem("showProvenanceLinks") === "false");
+    let showIntraSpaceLinks = !(localStorage.getItem("showIntraSpaceLinks") === "false");
+    let showExtraSpaceLinks = !(localStorage.getItem("showExtraSpaceLinks") === "false");
     
     const excludedTypes = ["http://www.w3.org/2001/XMLSchema#string", "https://schema.hbp.eu/minds/Softwareagent"];
     const excludedProperties = [];
@@ -59,7 +60,16 @@
     };
 
     const simplifySemantics = rawtype => {
-
+        const extractSpaceFromId = (id) => { 
+                
+            if (typeof id === "string") {
+                const m = id.match(/^.*\/([a-z0-9_\-]+)\/[a-z0-9_\-]+#?[a-z0-9_\-]+$/i);
+                if (m && m.length >= 1) {
+                    return m[1];
+                }
+            }
+            return undefined;
+        };
 
         const simplifyPropertiesSemeantics = properties => {
 
@@ -116,6 +126,17 @@
                 properties: simplifyPropertiesSemeantics(space["https://core.kg.ebrains.eu/vocab/meta/properties"])
             }));
         }
+
+        // if (type.occurrences === 0) {
+        //     const name = extractSpaceFromId(type.id);
+        //     if (name) {
+        //         types.spaces.push({
+        //             name: name,
+        //             occurrences: 0,
+        //             properties: []
+        //         });
+        //     }
+        // }
         return type;
     };
 
@@ -255,9 +276,17 @@
             });
         };
 
+        let spaceStatus = JSON.parse(localStorage.getItem("spaceStatus"));
+        if (!spaceStatus) {
+            spaceStatus = {};
+        }
+
         spaces = {};
         types = data.data.reduce((acc, rawType) => {
             const type = simplifySemantics(rawType);
+            if (type.name === "Abstractionlevel") {
+                console.log(type);
+            }
             type.hash = hashCode(type.id);
             type.isProvenance = type.id.startsWith(AppConfig.structure.provenance);
             if (excludedTypes.includes(type.id)) {
@@ -265,7 +294,7 @@
             }
             acc[type.id] = type;
 
-            type.spaces.forEach(space => spaces[space.name] = {name: space.name, enabled: true});
+            type.spaces.forEach(space => spaces[space.name] = {name: space.name, enabled: !(spaceStatus[space.name] === false)});
             return acc;
         }, {});
 
@@ -425,6 +454,11 @@
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
     };
 
+    const getSpaceStatus = () => Object.entries(spaces).reduce((acc, [n, v]) => {
+        acc[n] = v.enabled;
+        return acc;
+    }, {});
+
     const reset = () => {
         selectedType = undefined;
         lastUpdate = undefined;
@@ -434,6 +468,7 @@
         showIntraSpaceLinks = true;
         showExtraSpaceLinks = true;
         spacesList.forEach(space => space.enabled = true);
+        localStorage.setItem("spaceStatus", JSON.stringify(getSpaceStatus()));
         structureStore.toggleState("TYPE_SELECTED", !!selectedType);
         structureStore.toggleState("TYPE_HIGHLIGHTED", !!highlightedType);
         structureStore.toggleState("TYPE_DETAILS_SHOW", !!selectedType);
@@ -538,6 +573,7 @@
     structureStore.addAction("structure:space_toggle", name => {
         if (spaces[name]) {
             spaces[name].enabled = !spaces[name].enabled;
+            localStorage.setItem("spaceStatus", JSON.stringify(getSpaceStatus()));
             buildOverviewGraphData();
             if (selectedType) {
                 buildTypeGraphData();
@@ -550,6 +586,7 @@
         if ((enabled === true || enabled === false) && enabled !== showAllSpaces()) {
             const list = selectedType?typeGraphData.availableSpaces:overviewGraphData.availableSpaces;
             list.forEach(space => space.enabled = enabled);
+            localStorage.setItem("spaceStatus", JSON.stringify(getSpaceStatus()));
             buildOverviewGraphData();
             if (selectedType) {
                 buildTypeGraphData();
@@ -560,6 +597,7 @@
 
     structureStore.addAction("structure:provenance_links_toggle", () => {
         showProvenanceLinks = !showProvenanceLinks;
+        localStorage.setItem("showProvenanceLinks", showProvenanceLinks);
         structureStore.toggleState("PROVENANCE_LINKS_SHOW", showProvenanceLinks);
         buildOverviewGraphData();
         if (selectedType) {
@@ -570,6 +608,7 @@
 
     structureStore.addAction("structure:space_intra_links_toggle", () => {
         showIntraSpaceLinks = !showIntraSpaceLinks;
+        localStorage.setItem("showIntraSpaceLinks", showIntraSpaceLinks);
         structureStore.toggleState("INTRA_SPACE_LINKS_SHOW", showIntraSpaceLinks);
         buildOverviewGraphData();
         if (selectedType) {
@@ -580,6 +619,7 @@
 
     structureStore.addAction("structure:space_extra_links_toggle", () => {
         showExtraSpaceLinks = !showExtraSpaceLinks;
+        localStorage.setItem("showExtraSpaceLinks", showExtraSpaceLinks);
         structureStore.toggleState("EXTRA_SPACE_LINKS_SHOW", showExtraSpaceLinks);
         buildOverviewGraphData();
         if (selectedType) {
