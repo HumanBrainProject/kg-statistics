@@ -1,6 +1,6 @@
 {
-  "name": "KG-Statistics-UI",
-  "version": "0.1.0",
+  "name": "KG-Statistics",
+  "version": "3.0.0",
   "private": true,
   "dependencies": {
     "gulp": "^4.0.2",
