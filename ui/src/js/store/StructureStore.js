@@ -498,7 +498,7 @@
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/v3-beta/types?stage=${releasedStage ? "RELEASED" : "IN_PROGRESS"}&withProperties=true`)
+            fetch(`/api/v3-beta/types?stage=${releasedStage ? "RELEASED" : "IN_PROGRESS"}&withProperties=true&withCounts=true`)
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
