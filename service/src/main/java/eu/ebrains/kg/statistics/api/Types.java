@@ -16,7 +16,6 @@ public class Types {
 
     @GetMapping
     public Map getTypes(@RequestParam("stage") String stage) {
-        System.out.println("hfhifehfiehfiehfiefhiefhiefheifheifeh");
         return typesClient.getTypes(stage);
     }
 }
