@@ -1,9 +1,4 @@
-This project offers representation of the knowledge graph
-
-The data represented in the UI are extracted from the structure.json file.
-
-This files is generated at a regular interval by the scheduler in the /ui folder.
-
+This project offers representation of the knowledge graph.
 
 ## Repo
 https://github.com/HumanBrainProject/kg-statistics
