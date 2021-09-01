@@ -98,27 +98,26 @@
                 return [];
             }
             return properties.map(property => ({
-                id: property["http://schema.org/identifier"],
-                name: getName(property["http://schema.org/identifier"], property["http://schema.org/name"]),
-                occurrences: property["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
-                targetTypes: property["https://core.kg.ebrains.eu/vocab/meta/targetTypes"].map(targetType => {
-                    const type = {
-                        id: targetType["https://core.kg.ebrains.eu/vocab/meta/type"],
-                        occurrences: targetType["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
-                        spaces: []
-                    };
-                    if (Array.isArray(targetType["https://core.kg.ebrains.eu/vocab/meta/spaces"])) {
-                        type.spaces = targetType["https://core.kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
-                            //type: space["https://core.kg.ebrains.eu/vocab/meta/type"],
-                            name: space["https://core.kg.ebrains.eu/vocab/meta/space"],
-                            occurrences: space["https://core.kg.ebrains.eu/vocab/meta/occurrences"]
-                        }));
-                    }
-                    return type;
-                })
+                    id: property["http://schema.org/identifier"],
+                    name: getName(property["http://schema.org/identifier"], property["http://schema.org/name"]),
+                    occurrences: property["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
+                    targetTypes: property["https://core.kg.ebrains.eu/vocab/meta/targetTypes"] && property["https://core.kg.ebrains.eu/vocab/meta/targetTypes"].map(targetType => {
+                        const type = {
+                            id: targetType["https://core.kg.ebrains.eu/vocab/meta/type"],
+                            occurrences: targetType["https://core.kg.ebrains.eu/vocab/meta/occurrences"],
+                            spaces: []
+                        };
+                        if (Array.isArray(targetType["https://core.kg.ebrains.eu/vocab/meta/spaces"])) {
+                            type.spaces = targetType["https://core.kg.ebrains.eu/vocab/meta/spaces"].map(space => ({
+                                //type: space["https://core.kg.ebrains.eu/vocab/meta/type"],
+                                name: space["https://core.kg.ebrains.eu/vocab/meta/space"],
+                                occurrences: space["https://core.kg.ebrains.eu/vocab/meta/occurrences"]
+                            }));
+                        }
+                        return type;
+                    })
             }));
         };
-
         const type = {
             id: rawtype["http://schema.org/identifier"],
             name: rawtype["http://schema.org/name"],
@@ -162,37 +161,39 @@
                 if (excludedPropertiesForLinks.includes(property.name)) {
                     property.excludeLinks = true;
                 }
-                property.targetTypes.forEach(targetType => {
-                    const target = types[targetType.id];
-                    if (target) {
-                        targetType.name = target.name;
-                    } else {
-                        targetType.name = targetType.id;
-                        targetType.isUnknown = true;
-                    }
-                    if (excludedTypes.includes(targetType.id)) {
-                        targetType.isExcluded = true;
-                    }
-                    if (!property.excludeLinks) {
-                        if (!acc[targetType.id]) {
-                            acc[targetType.id] = {
-                                occurrences: 0,
-                                targetId: targetType.id,
-                                targetName: targetType.name,
-                                isProvenance: isProvenance
-                            }
-                            if (targetType.isExcluded) {
-                                acc[targetType.id].isExcluded = true;
-                            }
-                            if (targetType.isUnknown) {
-                                acc[targetType.id].isUnknown = true;
-                            }
+                if(property.targetTypes) {
+                    property.targetTypes.forEach(targetType => {
+                        const target = types[targetType.id];
+                        if (target) {
+                            targetType.name = target.name;
+                        } else {
+                            targetType.name = targetType.id;
+                            targetType.isUnknown = true;
                         }
-                        acc[targetType.id].occurrences += targetType.occurrences;
-                        acc[targetType.id].isProvenance = isProvenance && acc[targetType.id].isProvenance;
-                    }
-                });
-                property.targetTypes = property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+                        if (excludedTypes.includes(targetType.id)) {
+                            targetType.isExcluded = true;
+                        }
+                        if (!property.excludeLinks) {
+                            if (!acc[targetType.id]) {
+                                acc[targetType.id] = {
+                                    occurrences: 0,
+                                    targetId: targetType.id,
+                                    targetName: targetType.name,
+                                    isProvenance: isProvenance
+                                }
+                                if (targetType.isExcluded) {
+                                    acc[targetType.id].isExcluded = true;
+                                }
+                                if (targetType.isUnknown) {
+                                    acc[targetType.id].isUnknown = true;
+                                }
+                            }
+                            acc[targetType.id].occurrences += targetType.occurrences;
+                            acc[targetType.id].isProvenance = isProvenance && acc[targetType.id].isProvenance;
+                        }
+                    });
+                    property.targetTypes =  property.targetTypes.sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
+                }
                 return acc;
             }, {});
             return Object.values(linksTo).sort((a, b) => (a.targetName > b.targetName)?1:((a.targetName < b.targetName)?-1:0));
@@ -212,37 +213,39 @@
                     if (excludedPropertiesForLinks.includes(property.name)) {
                         property.excludeLinks = true;
                     }
-                    property.targetTypes.forEach(targetType => {
-                        const target = types[targetType.id];
-                        if (target) {
-                            targetType.name = target.name;
-                        } else {
-                            targetType.name = targetType.id;
-                            targetType.isUnknown = true;
-                        }
-                        if (excludedTypes.includes(targetType.id)) {
-                            targetType.isExcluded = true;
-                        }
-                        if (!property.excludeLinks) {
-                            targetType.spaces.forEach(spaceTo => {
-                                const link = {
-                                    occurrences: spaceTo.occurrences,
-                                    sourceSpace: spaceFrom.name,
-                                    targetSpace: spaceTo.name,
-                                    targetId: targetType.id,
-                                    targetName: targetType.name,
-                                    isProvenance: isProvenance
-                                };
-                                if (targetType.isExcluded) {
-                                    link.isExcluded = true;
-                                }
-                                if (targetType.isUnknown) {
-                                    link.isUnknown = true;
-                                }
-                                links.push(link);
-                            });
-                        }
-                    });
+                    if(property.targetTypes) {
+                        property.targetTypes.forEach(targetType => {
+                            const target = types[targetType.id];
+                            if (target) {
+                                targetType.name = target.name;
+                            } else {
+                                targetType.name = targetType.id;
+                                targetType.isUnknown = true;
+                            }
+                            if (excludedTypes.includes(targetType.id)) {
+                                targetType.isExcluded = true;
+                            }
+                            if (!property.excludeLinks) {
+                                targetType.spaces.forEach(spaceTo => {
+                                    const link = {
+                                        occurrences: spaceTo.occurrences,
+                                        sourceSpace: spaceFrom.name,
+                                        targetSpace: spaceTo.name,
+                                        targetId: targetType.id,
+                                        targetName: targetType.name,
+                                        isProvenance: isProvenance
+                                    };
+                                    if (targetType.isExcluded) {
+                                        link.isExcluded = true;
+                                    }
+                                    if (targetType.isUnknown) {
+                                        link.isUnknown = true;
+                                    }
+                                    links.push(link);
+                                });
+                            }
+                        });
+                    }
                 });
             });
             return links;
@@ -301,7 +304,6 @@
             type.spaces.forEach(space => spaces[space.name] = {name: space.name, enabled: !(spaceStatus[space.name] === false)});
             return acc;
         }, {});
-
         typesList = Object.values(types);
         spacesList = Object.values(spaces).sort((a, b) => (a.name > b.name)?1:((a.name < b.name)?-1:0));
 
@@ -505,7 +507,7 @@
             structureStore.toggleState("STRUCTURE_LOADING", true);
             structureStore.toggleState("STRUCTURE_ERROR", false);
             structureStore.notifyChange();
-            fetch(`/api/v3-beta/types?stage=${releasedStage ? "RELEASED" : "IN_PROGRESS"}`)
+            fetch(`http://localhost:8080/types?stage=${releasedStage ? "RELEASED" : "IN_PROGRESS"}`)
                 .then(response => response.json())
                 .then(data => {
                     lastUpdate = new Date();
@@ -522,6 +524,7 @@
                     structureStore.notifyChange();
                 })
                 .catch(e => {
+                    debugger;
                     structureStore.toggleState("STRUCTURE_ERROR", true);
                     structureStore.toggleState("STRUCTURE_LOADED", false);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
