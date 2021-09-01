@@ -524,7 +524,6 @@
                     structureStore.notifyChange();
                 })
                 .catch(e => {
-                    debugger;
                     structureStore.toggleState("STRUCTURE_ERROR", true);
                     structureStore.toggleState("STRUCTURE_LOADED", false);
                     structureStore.toggleState("STRUCTURE_LOADING", false);
