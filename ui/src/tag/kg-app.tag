@@ -100,12 +100,11 @@
 
         .loading-panel {
             position: absolute;
-            width: 380px;
             height: 80px;
-            top: -200px;
             margin-left: calc(50% - 180px);
             padding: 20px;
             border-radius: 4px;
+            top:-200px;
             box-sizing: border-box;
             background-color: #404040;
             transition: margin-top 0.25s ease-in;
@@ -123,38 +122,12 @@
             display: inline-block;
             width: 40px;
             height: 40px;
-        }
-
-        .loading-panel .loading-spinner img {
-            width: 100%;
-            height: 100%;
-            -webkit-animation: loading-spinner-rotate 0.3s infinite linear;
-            animation: loading-spinner-rotate 0.3s infinite linear;
+            top: 33px;
         }
 
         .loading-panel .loading-label {
             display: inline-block;
-            padding: 12px 0 0 55px;
-        }
-
-        @-webkit-keyframes loading-spinner-rotate {
-            0% {
-                -webkit-transform: rotateZ(0deg)
-            }
-            100% {
-                -webkit-transform: rotateZ(360deg)
-            }
-        }
-
-        @keyframes loading-spinner-rotate {
-            0% {
-                transform: rotateZ(0deg);
-                -webkit-transform: rotateZ(0deg);
-            }
-            100% {
-                transform: rotateZ(0deg);
-                -webkit-transform: rotateZ(360deg);
-            }
+            padding: 12px 0 0 30px;
         }
 
         .error-panel {
@@ -213,7 +186,7 @@
         <kg-side-panel if={isLoaded}></kg-side-panel>
         <div class="loading-panel {show: isLoading}">
             <span class="loading-spinner">
-                <img src="img/ebrains.svg" alt="loading..." />
+              <i class="fa fa-circle-o-notch fa-spin" aria-hidden="true"></i>
             </span>
             <span class="loading-label">Loading structure</span>
         </div>
