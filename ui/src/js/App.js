@@ -23,7 +23,6 @@
 
 window.App = {
     init: function(){
-        document.title = AppConfig.title;
         riot.mount("*");
     }
 }
