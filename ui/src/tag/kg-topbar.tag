@@ -92,7 +92,7 @@
     </style>
     <div class="header">
         <div class="header-left">
-            <img src="img/ebrains.svg" alt="" width="40" height="40" />
+            <img src="img/ebrains.svg" alt="" height="40" />
             <div class="title">{AppConfig.title}</div>
         </div>
         <div class="header-right" if={isLoaded} >
