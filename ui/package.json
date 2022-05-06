@@ -10,10 +10,12 @@
     "gulp-riot": "^1.1.5"
   },
   "devDependencies": {
+    "eslint": "^8.14.0",
     "gulp-webserver": "^0.9.1"
   },
   "scripts": {
     "start": "gulp build && gulp",
-    "build": "gulp build"
+    "build": "gulp build",
+    "lint": "eslint src/"
   }
 }
