@@ -7,8 +7,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Component
 public class ServiceCall {
     private final WebClient webClient;
-
-    final private String kgCoreEndpoint;
+    private final String kgCoreEndpoint;
 
     public ServiceCall(WebClient webClient, @Value("${kgcore.endpoint}") String kgCoreEndpoint) {
         this.webClient = webClient;

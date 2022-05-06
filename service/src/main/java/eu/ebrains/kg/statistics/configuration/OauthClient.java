@@ -34,9 +34,7 @@ public class OauthClient {
         );
         oauth2.setDefaultClientRegistrationId("kg");
         return WebClient.builder().exchangeStrategies(exchangeStrategies).apply(oauth2.oauth2Configuration()).filter((clientRequest, nextFilter) -> {
-            ClientRequest updatedHeaders = ClientRequest.from(clientRequest).headers(h -> {
-                h.put("Client-Authorization", h.get("Authorization"));
-            }).build();
+            ClientRequest updatedHeaders = ClientRequest.from(clientRequest).headers(h -> h.put("Client-Authorization", h.get("Authorization"))).build();
             return nextFilter.exchange(updatedHeaders);
         }).build();
     }

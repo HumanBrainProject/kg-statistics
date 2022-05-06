@@ -14,6 +14,7 @@ public class Types {
         this.typesClient = typesClient;
     }
 
+    @SuppressWarnings("java:S3740") // Generics are kept intentionally
     @GetMapping
     public Map getTypes(@RequestParam("stage") String stage) {
         return typesClient.getTypes(stage);

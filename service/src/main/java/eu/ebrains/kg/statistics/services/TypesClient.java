@@ -14,6 +14,7 @@ public class TypesClient {
         this.kg = kg;
     }
 
+    @SuppressWarnings("java:S3740") // Generics are kept intentionally
     public Map getTypes(String stage) {
         String relativeUrl = String.format("types?stage=%s&withProperties=true&withCounts=true", stage);
         return kg.client().get()

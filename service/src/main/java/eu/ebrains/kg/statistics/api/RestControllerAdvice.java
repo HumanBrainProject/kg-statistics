@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+@SuppressWarnings("java:S1452") //Generics are kept intentionally
 @ControllerAdvice(annotations = RestController.class)
 public class RestControllerAdvice {
 
