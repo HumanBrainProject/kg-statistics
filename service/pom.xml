@@ -31,10 +31,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>eu.ebrains.kg</groupId>
-	<artifactId>service</artifactId>
+	<artifactId>kg-statistics</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>service</name>
-	<description>KG Statistics Service</description>
+	<name>KG Statistics service</name>
 	<properties>
 		<java.version>11</java.version>
 	</properties>
