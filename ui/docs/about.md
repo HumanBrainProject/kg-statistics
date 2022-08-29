@@ -1,7 +1,7 @@
 # KG Statistics
 
 ![KG Statistics](kg_statistics.jpg)
-*Use the KG Query Builder to design your own queries on the EBRAINS Knowledge Graph*
+*Visualize the current state of the EBRAINS Knowledge Graph with KG Statistics*
 
 ### Visualize the current Knowledge Graph
 One picture says more than 1000 words - this is especially true if you try to keep the overview of what metadata 
